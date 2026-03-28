@@ -1,5 +1,49 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery, query } from "./_generated/server";
+
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+  type MutationCtx,
+} from "./_generated/server";
+
+async function upsertUser(
+  ctx: MutationCtx,
+  args: {
+    workosId: string;
+    email: string;
+    name?: string;
+    avatarUrl?: string;
+  },
+) {
+  const existing = await ctx.db
+    .query("users")
+    .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
+    .unique();
+  const now = Date.now();
+  const userDoc = {
+    workosId: args.workosId,
+    email: args.email,
+    ...(args.name !== undefined ? { name: args.name } : {}),
+    ...(args.avatarUrl !== undefined ? { avatarUrl: args.avatarUrl } : {}),
+    updatedAt: now,
+  };
+
+  if (existing) {
+    await ctx.db.replace(existing._id, {
+      ...userDoc,
+      createdAt: existing.createdAt,
+    });
+
+    return existing._id;
+  }
+
+  return await ctx.db.insert("users", {
+    ...userDoc,
+    createdAt: now,
+  });
+}
 
 export const upsertFromWorkOS = internalMutation({
   args: {
@@ -9,33 +53,7 @@ export const upsertFromWorkOS = internalMutation({
     avatarUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("users")
-      .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
-      .unique();
-
-    const now = Date.now();
-    const userDoc = {
-      workosId: args.workosId,
-      email: args.email,
-      ...(args.name !== undefined ? { name: args.name } : {}),
-      ...(args.avatarUrl !== undefined ? { avatarUrl: args.avatarUrl } : {}),
-      updatedAt: now,
-    };
-
-    if (existing) {
-      await ctx.db.replace(existing._id, {
-        ...userDoc,
-        createdAt: existing.createdAt,
-      });
-
-      return existing._id;
-    }
-
-    return await ctx.db.insert("users", {
-      ...userDoc,
-      createdAt: now,
-    });
+    return await upsertUser(ctx, args);
   },
 });
 
@@ -62,5 +80,25 @@ export const getCurrentUser = query({
       .query("users")
       .withIndex("by_workos_id", (q) => q.eq("workosId", identity.subject))
       .unique();
+  },
+});
+
+export const ensureCurrentUser = mutation({
+  args: {
+    email: v.string(),
+    name: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    return await upsertUser(ctx, {
+      workosId: identity.subject,
+      ...args,
+    });
   },
 });

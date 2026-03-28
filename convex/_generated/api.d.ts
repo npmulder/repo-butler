@@ -10,6 +10,7 @@
 
 import type * as artifacts from "../artifacts.js";
 import type * as auth from "../auth.js";
+import type * as githubInstallations from "../githubInstallations.js";
 import type * as http from "../http.js";
 import type * as issues from "../issues.js";
 import type * as lib_auth from "../lib/auth.js";
@@ -26,6 +27,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   artifacts: typeof artifacts;
   auth: typeof auth;
+  githubInstallations: typeof githubInstallations;
   http: typeof http;
   issues: typeof issues;
   "lib/auth": typeof lib_auth;
