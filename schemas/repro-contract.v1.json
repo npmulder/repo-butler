@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repobutler.dev/schemas/repro-contract.v1.json",
+  "title": "Repro Contract",
+  "type": "object",
+  "required": ["schema_version", "run_id", "acceptance", "sandbox_policy", "budgets"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rb.repro_contract.v1"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "acceptance": {
+      "type": "object",
+      "required": [
+        "artifact_type",
+        "must_fail_on_base_revision",
+        "must_be_deterministic",
+        "must_not_require_network",
+        "failure_signal"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "artifact_type": {
+          "enum": ["test", "script"]
+        },
+        "must_fail_on_base_revision": {
+          "type": "boolean"
+        },
+        "must_be_deterministic": {
+          "type": "object",
+          "required": ["reruns", "allowed_flake_rate"],
+          "additionalProperties": false,
+          "properties": {
+            "reruns": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "allowed_flake_rate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "must_not_require_network": {
+          "type": "boolean"
+        },
+        "failure_signal": {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": ["exception", "assertion", "nonzero_exit", "snapshot_diff", "timeout"]
+            },
+            "stderr_match_any": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "sandbox_policy": {
+      "type": "object",
+      "required": ["network", "run_as_root", "secrets_mount"],
+      "additionalProperties": false,
+      "properties": {
+        "network": {
+          "enum": ["disabled", "enabled"]
+        },
+        "run_as_root": {
+          "type": "boolean"
+        },
+        "secrets_mount": {
+          "enum": ["none", "readonly"]
+        }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "required": ["wall_clock_seconds", "max_iterations"],
+      "additionalProperties": false,
+      "properties": {
+        "wall_clock_seconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 3600
+        },
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        }
+      }
+    }
+  }
+}

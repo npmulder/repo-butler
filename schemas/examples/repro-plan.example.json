@@ -1,0 +1,28 @@
+{
+  "schema_version": "rb.repro_plan.v1",
+  "run_id": "repro-plan-001",
+  "base_revision": {
+    "ref": "origin/main",
+    "sha": "6f914ae9d39dc7eeceb71ed7c99bcda65d7f751b"
+  },
+  "environment_strategy": {
+    "preferred": "manual_bootstrap",
+    "fallbacks": ["dockerfile", "repo2run_synth"],
+    "notes": "The repo currently ships a Next.js scaffold without a devcontainer or Dockerfile."
+  },
+  "commands": [
+    {
+      "cwd": ".",
+      "cmd": "pnpm install --frozen-lockfile"
+    },
+    {
+      "cwd": ".",
+      "cmd": "pnpm validate:schemas"
+    }
+  ],
+  "artifact": {
+    "type": "script",
+    "path": "scripts/validate-schemas.ts",
+    "entrypoint": "pnpm validate:schemas"
+  }
+}
