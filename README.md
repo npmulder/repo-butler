@@ -60,7 +60,8 @@ The app runs at `http://localhost:3000`.
 
 - `NEXT_PUBLIC_CONVEX_URL`: Convex deployment URL used by the React client.
 - `CONVEX_DEPLOYMENT`: Convex deployment ref used by CLI commands such as
-  `pnpm run convex:codegen`.
+  `pnpm run convex:codegen`. Mirror this value into the GitHub Actions
+  `CONVEX_DEPLOYMENT` secret for non-interactive CI/CD configuration.
 - `WORKOS_CLIENT_ID`: WorkOS AuthKit client ID.
 - `WORKOS_API_KEY`: WorkOS API key. Keep this server-side only.
 - `WORKOS_COOKIE_PASSWORD`: 32+ character secret used for encrypted session cookies.
@@ -78,7 +79,8 @@ pnpm dev
 
 ## CI and deployment
 
-- `.github/workflows/ci.yml` runs Convex codegen (when the
-  `CONVEX_DEPLOYMENT` secret is present), lint, type-check, and build on pushes
-  and pull requests.
+- `.github/workflows/ci.yml` runs lint, type-check, and build on pushes and pull requests.
+- GitHub Actions secret `CONVEX_DEPLOYMENT` should match the shared dev
+  deployment for any non-interactive Convex CLI tasks that need deployment
+  selection.
 - `.github/workflows/convex-deploy.yml` deploys to Convex when `CONVEX_DEPLOY_KEY` is present.
