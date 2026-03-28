@@ -1,64 +1,84 @@
 import { AuthKit, type AuthFunctions } from "@convex-dev/workos-authkit";
-
+import { v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
+import { internalMutation } from "./_generated/server";
+
+const hasWorkosWebhookConfig = Boolean(
+  process.env.WORKOS_CLIENT_ID &&
+    process.env.WORKOS_API_KEY &&
+    process.env.WORKOS_WEBHOOK_SECRET,
+);
 
 const authFunctions: AuthFunctions = internal.auth;
 
-export const authKit = new AuthKit<DataModel>(components.workOSAuthKit, {
-  authFunctions,
-});
+export const authKit = hasWorkosWebhookConfig
+  ? new AuthKit<DataModel>(components.workOSAuthKit, { authFunctions })
+  : null;
 
-export const { authKitEvent } = authKit.events({
-  "user.created": async (ctx, event) => {
-    const existingUser = await ctx.db
+function getName(data: Record<string, unknown>) {
+  const firstName =
+    typeof data.firstName === "string" ? data.firstName.trim() : "";
+  const lastName =
+    typeof data.lastName === "string" ? data.lastName.trim() : "";
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+
+  return fullName.length > 0 ? fullName : undefined;
+}
+
+export const authKitEvent = internalMutation({
+  args: {
+    event: v.string(),
+    data: v.record(v.string(), v.any()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const workosId = typeof args.data.id === "string" ? args.data.id : null;
+
+    if (!workosId) {
+      return null;
+    }
+
+    const existing = await ctx.db
       .query("users")
-      .withIndex("by_workos_id", (q) => q.eq("workosId", event.data.id))
+      .withIndex("by_workos_id", (q) => q.eq("workosId", workosId))
       .unique();
 
-    const profile = {
-      email: event.data.email,
-      name: [event.data.firstName, event.data.lastName].filter(Boolean).join(" ") || undefined,
-      avatarUrl: event.data.profilePictureUrl ?? undefined,
+    if (args.event === "user.deleted") {
+      if (existing) {
+        await ctx.db.delete(existing._id);
+      }
+
+      return null;
+    }
+
+    const email = typeof args.data.email === "string" ? args.data.email : null;
+
+    if (!email) {
+      return null;
+    }
+
+    const patch = {
+      email,
+      name: getName(args.data),
+      avatarUrl:
+        typeof args.data.profilePictureUrl === "string"
+          ? args.data.profilePictureUrl
+          : undefined,
+      updatedAt: Date.now(),
     };
 
-    if (existingUser) {
-      await ctx.db.patch(existingUser._id, profile);
-      return;
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+      return null;
     }
 
     await ctx.db.insert("users", {
-      workosId: event.data.id,
-      ...profile,
-      createdAt: Date.now(),
+      workosId,
+      createdAt: patch.updatedAt,
+      ...patch,
     });
-  },
-  "user.updated": async (ctx, event) => {
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_workos_id", (q) => q.eq("workosId", event.data.id))
-      .unique();
 
-    if (!user) {
-      return;
-    }
-
-    await ctx.db.patch(user._id, {
-      email: event.data.email,
-      name: [event.data.firstName, event.data.lastName].filter(Boolean).join(" ") || undefined,
-      avatarUrl: event.data.profilePictureUrl ?? undefined,
-    });
-  },
-  "user.deleted": async (ctx, event) => {
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_workos_id", (q) => q.eq("workosId", event.data.id))
-      .unique();
-
-    if (!user) {
-      return;
-    }
-
-    await ctx.db.delete(user._id);
+    return null;
   },
 });

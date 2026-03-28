@@ -1,27 +1,24 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { authKit } from "../auth";
 
 type AuthedCtx = MutationCtx | QueryCtx;
 
-async function getAuthUser(ctx: AuthedCtx) {
-  if (!authKit) {
-    throw new Error("WorkOS AuthKit is not configured");
-  }
+async function getAuthSubject(ctx: AuthedCtx) {
+  const identity = await ctx.auth.getUserIdentity();
 
-  return await authKit.getAuthUser(ctx);
-}
-
-export async function requireCurrentUser(ctx: AuthedCtx): Promise<Doc<"users">> {
-  const authUser = await getAuthUser(ctx);
-
-  if (!authUser) {
+  if (!identity) {
     throw new Error("Not authenticated");
   }
 
+  return identity.subject;
+}
+
+export async function requireCurrentUser(ctx: AuthedCtx): Promise<Doc<"users">> {
+  const workosId = await getAuthSubject(ctx);
+
   const user = await ctx.db
     .query("users")
-    .withIndex("by_workos_id", (q) => q.eq("workosId", authUser.id))
+    .withIndex("by_workos_id", (q) => q.eq("workosId", workosId))
     .unique();
 
   if (!user) {

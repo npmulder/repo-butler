@@ -1,5 +1,4 @@
 import { v } from "convex/values";
-import { authKit } from "./auth";
 import { internalMutation, internalQuery, query } from "./_generated/server";
 
 export const upsertFromWorkOS = internalMutation({
@@ -49,19 +48,15 @@ export const getByWorkOSId = internalQuery({
 export const getCurrentUser = query({
   args: {},
   handler: async (ctx) => {
-    if (!authKit) {
-      return null;
-    }
+    const identity = await ctx.auth.getUserIdentity();
 
-    const authUser = await authKit.getAuthUser(ctx);
-
-    if (!authUser) {
+    if (!identity) {
       return null;
     }
 
     return await ctx.db
       .query("users")
-      .withIndex("by_workos_id", (q) => q.eq("workosId", authUser.id))
+      .withIndex("by_workos_id", (q) => q.eq("workosId", identity.subject))
       .unique();
   },
 });
