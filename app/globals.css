@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 9 11 16;
+    --foreground: 241 245 249;
+    --panel: 13 17 24;
+    --panel-foreground: 241 245 249;
+    --muted-foreground: 148 163 184;
+    --border: 44 52 68;
+    --accent: 249 115 22;
+    --ring: 251 146 60;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background:
+      radial-gradient(circle at top, rgba(249, 115, 22, 0.08), transparent 30%),
+      linear-gradient(180deg, rgba(10, 12, 18, 0.98), rgba(6, 8, 12, 1));
+    color: rgb(var(--foreground));
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: linear-gradient(180deg, rgba(255, 255, 255, 0.45), transparent 80%);
+    opacity: 0.25;
+  }
+
+  a {
+    @apply transition-colors;
+  }
+
+  ::selection {
+    background: rgba(249, 115, 22, 0.35);
+    color: rgb(var(--foreground));
+  }
+}
