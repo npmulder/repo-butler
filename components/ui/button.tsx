@@ -16,12 +16,12 @@ export function buttonStyles({
   className?: string;
 } = {}) {
   return cn(
-    "inline-flex items-center justify-center gap-2 rounded-full border text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    "inline-flex items-center justify-center gap-2 rounded-xl border text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
     variant === "primary" &&
-      "border-accent/40 bg-accent px-5 text-slate-950 hover:bg-orange-400",
+      "border-accent bg-accent px-5 text-[#0d1117] hover:bg-[#fb8c42]",
     variant === "ghost" &&
-      "border-border/80 bg-panel/80 px-5 text-foreground hover:border-accent/30 hover:text-accent",
-    size === "md" && "h-11",
+      "border-border/80 bg-panel/55 px-5 text-foreground hover:border-white/15 hover:bg-white/[0.04]",
+    size === "md" && "h-11 px-4",
     size === "lg" && "h-12 px-6 text-base",
     className,
   );

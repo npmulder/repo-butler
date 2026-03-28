@@ -11,15 +11,17 @@ export function UserMenu() {
   const label = user?.firstName ?? user?.email?.split("@")[0] ?? "Maintainer";
 
   return (
-    <div className="flex items-center gap-3 rounded-full border border-border/80 bg-background/70 px-4 py-2.5">
+    <div className="flex items-center gap-3 rounded-xl border border-border/80 bg-background/70 px-3 py-2.5">
       <div className="flex min-w-0 flex-col">
         <span className="truncate text-sm font-medium">{label}</span>
-        <span className="truncate text-xs text-muted-foreground">{user?.email ?? "repo-butler"}</span>
+        <span className="truncate text-xs text-muted-foreground">
+          {user?.email ?? "repo-butler"}
+        </span>
       </div>
       <ChevronDown className="h-4 w-4 text-muted-foreground" />
       <button
         type="button"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/80 text-muted-foreground transition hover:text-foreground"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/80 text-muted-foreground transition hover:border-white/15 hover:bg-white/[0.04] hover:text-foreground"
         aria-label="Sign out"
         disabled={busy}
         onClick={async () => {
