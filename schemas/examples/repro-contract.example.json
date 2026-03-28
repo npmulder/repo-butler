@@ -1,0 +1,26 @@
+{
+  "schema_version": "rb.repro_contract.v1",
+  "run_id": "repro-contract-001",
+  "acceptance": {
+    "artifact_type": "test",
+    "must_fail_on_base_revision": true,
+    "must_be_deterministic": {
+      "reruns": 3,
+      "allowed_flake_rate": 0
+    },
+    "must_not_require_network": true,
+    "failure_signal": {
+      "kind": "assertion",
+      "stderr_match_any": ["Validation failed", "must be"]
+    }
+  },
+  "sandbox_policy": {
+    "network": "disabled",
+    "run_as_root": false,
+    "secrets_mount": "none"
+  },
+  "budgets": {
+    "wall_clock_seconds": 600,
+    "max_iterations": 5
+  }
+}

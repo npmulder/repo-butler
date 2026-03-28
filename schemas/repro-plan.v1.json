@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repobutler.dev/schemas/repro-plan.v1.json",
+  "title": "Repro Plan",
+  "type": "object",
+  "required": ["schema_version", "run_id", "base_revision", "environment_strategy", "commands", "artifact"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rb.repro_plan.v1"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base_revision": {
+      "type": "object",
+      "required": ["ref", "sha"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "type": "string"
+        },
+        "sha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{7,40}$"
+        }
+      }
+    },
+    "environment_strategy": {
+      "type": "object",
+      "required": ["preferred", "fallbacks"],
+      "additionalProperties": false,
+      "properties": {
+        "preferred": {
+          "enum": ["devcontainer", "dockerfile", "repo2run_synth", "manual_bootstrap"]
+        },
+        "fallbacks": {
+          "type": "array",
+          "items": {
+            "enum": ["devcontainer", "dockerfile", "repo2run_synth", "manual_bootstrap"]
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["cwd", "cmd"],
+        "additionalProperties": false,
+        "properties": {
+          "cwd": {
+            "type": "string"
+          },
+          "cmd": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["type", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "entrypoint": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

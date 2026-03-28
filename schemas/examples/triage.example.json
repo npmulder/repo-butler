@@ -1,0 +1,36 @@
+{
+  "schema_version": "rb.triage.v1",
+  "run_id": "triage-run-001",
+  "repo": {
+    "owner": "npmulder",
+    "name": "repo-butler",
+    "default_branch": "main"
+  },
+  "issue": {
+    "number": 115,
+    "title": "Define JSON artifact schemas",
+    "url": "https://github.com/npmulder/repo-butler/issues/115"
+  },
+  "classification": {
+    "type": "bug",
+    "area": ["schemas", "validation"],
+    "severity": "high",
+    "labels_suggested": ["needs-repro", "artifact-contracts"],
+    "confidence": 0.92
+  },
+  "repro_hypothesis": {
+    "minimal_steps_guess": [
+      "Install dependencies with pnpm.",
+      "Run the schema validation suite against malformed artifact payloads."
+    ],
+    "expected_failure_signal": {
+      "kind": "assertion",
+      "match_any": ["Validation failed", "must have required property"]
+    },
+    "environment_assumptions": {
+      "node": "20.x",
+      "package_manager": "pnpm"
+    }
+  },
+  "repro_eligible": true
+}
