@@ -1,6 +1,5 @@
 import { v } from "convex/values";
 
-import type { Doc } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import {
   requireCurrentUser,
@@ -56,32 +55,14 @@ export const getRecentByClassification = query({
   },
   handler: async (ctx, args) => {
     const user = await requireCurrentUser(ctx);
-    const results: Array<Doc<"triageResults">> = [];
-    const safeLimit = normalizeLimit(args.limit);
-
-    for await (const result of ctx.db
+    return await ctx.db
       .query("triageResults")
-      .withIndex("by_classification_type", (query) =>
-        query.eq("classificationType", args.classificationType),
+      .withIndex("by_user_and_classification_type", (query) =>
+        query
+          .eq("userId", user._id)
+          .eq("classificationType", args.classificationType),
       )
-      .order("desc")) {
-      if (!result.repoId) {
-        continue;
-      }
-
-      const repo = await ctx.db.get(result.repoId);
-
-      if (!repo || repo.userId !== user._id) {
-        continue;
-      }
-
-      results.push(result);
-
-      if (results.length >= safeLimit) {
-        break;
-      }
-    }
-
-    return results;
+      .order("desc")
+      .take(normalizeLimit(args.limit));
   },
 });

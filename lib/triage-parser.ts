@@ -5,10 +5,7 @@ import type {
 
 import type { TriageInput } from "./claude";
 import type { TriageResult } from "./generated/triage.v1";
-import {
-  validateArtifact,
-  type SchemaVersion,
-} from "./schema-validator";
+import { validateArtifact } from "./schema-validator";
 import { TRIAGE_TOOL_NAME } from "./prompts/triage";
 
 export type TriageToolOutput = Pick<
@@ -64,5 +61,5 @@ export function buildTriageArtifact(
 export function validateTriageArtifact(
   artifact: TriageArtifact,
 ): { valid: true } | { valid: false; errors: string[] } {
-  return validateArtifact("rb.triage.v1" as SchemaVersion, artifact);
+  return validateArtifact("rb.triage.v1", artifact);
 }

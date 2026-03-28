@@ -127,6 +127,7 @@ export default defineSchema({
     title: v.string(),
     body: v.optional(v.string()),
     authorLogin: v.string(),
+    githubCreatedAt: v.optional(v.string()),
     labels: v.array(v.string()),
     state: v.union(v.literal("open"), v.literal("closed")),
     commentsSnapshot: v.optional(
@@ -186,6 +187,7 @@ export default defineSchema({
 
   triageResults: defineTable({
     runId: v.id("runs"),
+    userId: v.optional(v.id("users")),
     repoId: v.optional(v.id("repos")),
     issueId: v.optional(v.id("issues")),
     artifact: v.optional(v.any()),
@@ -224,7 +226,12 @@ export default defineSchema({
   })
     .index("by_run", ["runId"])
     .index("by_repo", ["repoId"])
-    .index("by_classification_type", ["classificationType"]),
+    .index("by_classification_type", ["classificationType"])
+    .index("by_user_and_classification_type", [
+      "userId",
+      "classificationType",
+      "createdAt",
+    ]),
 
   reproContracts: defineTable({
     runId: v.id("runs"),

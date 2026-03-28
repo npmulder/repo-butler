@@ -82,7 +82,9 @@ function buildTriageInput(
       url: issue.githubIssueUrl,
       author: issue.authorLogin,
       labels: issue.labels,
-      createdAt: new Date(issue.createdAt).toISOString(),
+      createdAt: new Date(
+        issue.githubCreatedAt ?? issue.snapshotedAt,
+      ).toISOString(),
     },
     ...(repoContext ? { repoContext } : {}),
   };

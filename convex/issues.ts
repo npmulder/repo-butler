@@ -20,6 +20,7 @@ export const snapshot = internalMutation({
     title: v.string(),
     body: v.optional(v.string()),
     authorLogin: v.string(),
+    githubCreatedAt: v.optional(v.string()),
     labels: v.array(v.string()),
     state: issueStateValidator,
     commentsSnapshot: v.optional(commentsSnapshotValidator),
@@ -40,6 +41,9 @@ export const snapshot = internalMutation({
       githubIssueUrl: args.githubIssueUrl,
       title: args.title,
       authorLogin: args.authorLogin,
+      ...(args.githubCreatedAt !== undefined
+        ? { githubCreatedAt: args.githubCreatedAt }
+        : {}),
       labels: args.labels,
       state: args.state,
       ...(args.body !== undefined ? { body: args.body } : {}),

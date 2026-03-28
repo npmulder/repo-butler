@@ -24,6 +24,7 @@ export type IssueSnapshotInput<RepoId> = {
   title: string;
   body?: string;
   authorLogin: string;
+  githubCreatedAt?: string;
   labels: string[];
   state: "open" | "closed";
 };
@@ -172,6 +173,7 @@ function extractIssueSnapshotInput<RepoId>(
   const githubIssueUrl = readString(issue.html_url);
   const title = readString(issue.title);
   const authorLogin = readString(readRecord(issue, "user")?.login);
+  const githubCreatedAt = readString(issue.created_at);
   const state = readString(issue.state);
 
   if (
@@ -205,6 +207,7 @@ function extractIssueSnapshotInput<RepoId>(
     title,
     ...(body !== undefined ? { body } : {}),
     authorLogin,
+    ...(githubCreatedAt ? { githubCreatedAt } : {}),
     labels,
     state,
   };

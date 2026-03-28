@@ -13,6 +13,64 @@ const triageTokensUsedValidator = v.object({
   input: v.number(),
   output: v.number(),
 });
+const triageClassificationTypeValidator = v.union(
+  v.literal("bug"),
+  v.literal("docs"),
+  v.literal("question"),
+  v.literal("feature"),
+  v.literal("build"),
+  v.literal("test"),
+);
+const triageSeverityValidator = v.union(
+  v.literal("low"),
+  v.literal("medium"),
+  v.literal("high"),
+  v.literal("critical"),
+);
+const triageFailureSignalKindValidator = v.union(
+  v.literal("exception"),
+  v.literal("assertion"),
+  v.literal("nonzero_exit"),
+  v.literal("snapshot_diff"),
+  v.literal("timeout"),
+);
+const triageArtifactValidator = v.object({
+  schema_version: v.literal("rb.triage.v1"),
+  run_id: v.string(),
+  repo: v.object({
+    owner: v.string(),
+    name: v.string(),
+    default_branch: v.string(),
+  }),
+  issue: v.object({
+    number: v.number(),
+    title: v.string(),
+    url: v.string(),
+  }),
+  classification: v.object({
+    type: triageClassificationTypeValidator,
+    area: v.optional(v.array(v.string())),
+    severity: v.optional(triageSeverityValidator),
+    labels_suggested: v.array(v.string()),
+    confidence: v.number(),
+  }),
+  repro_hypothesis: v.object({
+    minimal_steps_guess: v.optional(v.array(v.string())),
+    expected_failure_signal: v.object({
+      kind: triageFailureSignalKindValidator,
+      match_any: v.optional(v.array(v.string())),
+    }),
+    environment_assumptions: v.optional(
+      v.object({
+        os: v.optional(v.string()),
+        language: v.optional(v.string()),
+        runtime: v.optional(v.string()),
+      }),
+    ),
+  }),
+  repro_eligible: v.boolean(),
+  summary: v.string(),
+});
 
 const failureSignalValidator = v.object({
   kind: v.union(
@@ -150,7 +208,7 @@ async function findSingleRunIdForLogStorage(
 export const storeTriage = internalMutation({
   args: {
     runId: v.id("runs"),
-    artifact: v.any(),
+    artifact: triageArtifactValidator,
     tokensUsed: triageTokensUsedValidator,
   },
   handler: async (ctx, args) => {
@@ -159,6 +217,26 @@ export const storeTriage = internalMutation({
     if (!run) {
       throw new Error("Run not found");
     }
+    const artifact = args.artifact;
+
+    if (artifact.classification.labels_suggested.length === 0) {
+      throw new Error(
+        "Invalid triage artifact: classification.labels_suggested must not be empty",
+      );
+    }
+
+    if (
+      artifact.classification.confidence < 0 ||
+      artifact.classification.confidence > 1
+    ) {
+      throw new Error(
+        "Invalid triage artifact: classification.confidence must be between 0 and 1",
+      );
+    }
+
+    if (artifact.summary.trim().length === 0) {
+      throw new Error("Invalid triage artifact: summary must not be empty");
+    }
 
     const existing = await ctx.db
       .query("triageResults")
@@ -166,50 +244,51 @@ export const storeTriage = internalMutation({
       .unique();
     const createdAt = existing?.createdAt ?? Date.now();
     const legacyClassification = {
-      type: args.artifact.classification.type,
-      ...(args.artifact.classification.area !== undefined
-        ? { area: args.artifact.classification.area }
+      type: artifact.classification.type,
+      ...(artifact.classification.area !== undefined
+        ? { area: artifact.classification.area }
         : {}),
-      ...(args.artifact.classification.severity !== undefined
-        ? { severity: args.artifact.classification.severity }
+      ...(artifact.classification.severity !== undefined
+        ? { severity: artifact.classification.severity }
         : {}),
-      labelsSuggested: args.artifact.classification.labels_suggested,
-      confidence: args.artifact.classification.confidence,
+      labelsSuggested: artifact.classification.labels_suggested,
+      confidence: artifact.classification.confidence,
     };
     const legacyReproHypothesis = {
-      ...(args.artifact.repro_hypothesis.minimal_steps_guess !== undefined
-        ? { minimalStepsGuess: args.artifact.repro_hypothesis.minimal_steps_guess }
+      ...(artifact.repro_hypothesis.minimal_steps_guess !== undefined
+        ? { minimalStepsGuess: artifact.repro_hypothesis.minimal_steps_guess }
         : {}),
       expectedFailureSignal: {
-        kind: args.artifact.repro_hypothesis.expected_failure_signal.kind,
-        ...(args.artifact.repro_hypothesis.expected_failure_signal.match_any !== undefined
+        kind: artifact.repro_hypothesis.expected_failure_signal.kind,
+        ...(artifact.repro_hypothesis.expected_failure_signal.match_any !== undefined
           ? {
               matchAny:
-                args.artifact.repro_hypothesis.expected_failure_signal.match_any,
+                artifact.repro_hypothesis.expected_failure_signal.match_any,
             }
           : {}),
       },
-      ...(args.artifact.repro_hypothesis.environment_assumptions !== undefined
+      ...(artifact.repro_hypothesis.environment_assumptions !== undefined
         ? {
             environmentAssumptions:
-              args.artifact.repro_hypothesis.environment_assumptions,
+              artifact.repro_hypothesis.environment_assumptions,
           }
         : {}),
     };
     const doc = {
       runId: args.runId,
+      ...(run.userId !== undefined ? { userId: run.userId } : {}),
       repoId: run.repoId,
       issueId: run.issueId,
-      artifact: args.artifact,
-      classificationType: args.artifact.classification.type,
-      ...(args.artifact.classification.severity !== undefined
-        ? { severity: args.artifact.classification.severity }
+      artifact,
+      classificationType: artifact.classification.type,
+      ...(artifact.classification.severity !== undefined
+        ? { severity: artifact.classification.severity }
         : {}),
-      confidence: args.artifact.classification.confidence,
-      reproEligible: args.artifact.repro_eligible,
-      summary: args.artifact.summary,
+      confidence: artifact.classification.confidence,
+      reproEligible: artifact.repro_eligible,
+      summary: artifact.summary,
       tokensUsed: args.tokensUsed,
-      schemaVersion: args.artifact.schema_version,
+      schemaVersion: artifact.schema_version,
       classification: legacyClassification,
       reproHypothesis: legacyReproHypothesis,
       ...(existing?.rawResponse !== undefined
