@@ -1,5 +1,9 @@
 const clientId = process.env.WORKOS_CLIENT_ID;
 
+if (!clientId) {
+  throw new Error("WORKOS_CLIENT_ID is required to configure Convex WorkOS auth.");
+}
+
 const authConfig = {
   providers: [
     {

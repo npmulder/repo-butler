@@ -5,9 +5,15 @@ import { ConvexProviderWithAuthKit } from "@convex-dev/workos";
 import { AuthKitProvider, useAccessToken, useAuth } from "@workos-inc/authkit-nextjs/components";
 import { ConvexReactClient } from "convex/react";
 
-const convex = new ConvexReactClient(
-  process.env.NEXT_PUBLIC_CONVEX_URL ?? "https://placeholder.convex.cloud",
-);
+const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+
+if (!convexUrl) {
+  throw new Error(
+    "NEXT_PUBLIC_CONVEX_URL is not set. Start Convex dev or add the deployment URL to .env.local.",
+  );
+}
+
+const convex = new ConvexReactClient(convexUrl);
 
 function useAuthKitForConvex() {
   const { user, loading } = useAuth();

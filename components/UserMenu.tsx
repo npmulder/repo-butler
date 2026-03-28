@@ -24,7 +24,11 @@ export function UserMenu() {
         disabled={busy}
         onClick={async () => {
           setBusy(true);
-          await signOut({ returnTo: "/" });
+          try {
+            await signOut({ returnTo: "/" });
+          } finally {
+            setBusy(false);
+          }
         }}
       >
         <LogOut className="h-4 w-4" />

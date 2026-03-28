@@ -11,11 +11,25 @@ export const authKit = new AuthKit<DataModel>(components.workOSAuthKit, {
 
 export const { authKitEvent } = authKit.events({
   "user.created": async (ctx, event) => {
-    await ctx.db.insert("users", {
-      workosId: event.data.id,
+    const existingUser = await ctx.db
+      .query("users")
+      .withIndex("by_workos_id", (q) => q.eq("workosId", event.data.id))
+      .unique();
+
+    const profile = {
       email: event.data.email,
       name: [event.data.firstName, event.data.lastName].filter(Boolean).join(" ") || undefined,
       avatarUrl: event.data.profilePictureUrl ?? undefined,
+    };
+
+    if (existingUser) {
+      await ctx.db.patch(existingUser._id, profile);
+      return;
+    }
+
+    await ctx.db.insert("users", {
+      workosId: event.data.id,
+      ...profile,
       createdAt: Date.now(),
     });
   },
