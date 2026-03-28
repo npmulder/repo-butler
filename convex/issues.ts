@@ -47,7 +47,7 @@ export const snapshot = internalMutation({
         ? { commentsSnapshot: args.commentsSnapshot }
         : {}),
       ...(args.linkedPRs !== undefined ? { linkedPRs: args.linkedPRs } : {}),
-      snapshottedAt: now,
+      snapshotedAt: now,
       createdAt: now,
     });
   },

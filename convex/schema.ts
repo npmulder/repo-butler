@@ -139,10 +139,10 @@ export default defineSchema({
       ),
     ),
     linkedPRs: v.optional(v.array(v.string())),
-    snapshottedAt: v.float64(),
+    snapshotedAt: v.float64(),
     createdAt: v.float64(),
   })
-    .index("by_repo", ["repoId", "snapshottedAt"])
+    .index("by_repo", ["repoId", "snapshotedAt"])
     .index("by_github_issue", ["repoId", "githubIssueNumber"])
     .index("by_created", ["createdAt"]),
 
@@ -181,17 +181,17 @@ export default defineSchema({
     .index("by_created", ["startedAt"]),
 
   triageResults: defineTable({
-    runDocId: v.id("runs"),
+    runId: v.id("runs"),
     schemaVersion: v.string(),
     classification: classificationValidator,
     reproHypothesis: reproHypothesisValidator,
     reproEligible: v.boolean(),
     rawResponse: v.optional(v.string()),
     createdAt: v.float64(),
-  }).index("by_run_doc", ["runDocId"]),
+  }).index("by_run", ["runId"]),
 
   reproContracts: defineTable({
-    runDocId: v.id("runs"),
+    runId: v.id("runs"),
     schemaVersion: v.string(),
     acceptance: v.object({
       artifactType: v.union(v.literal("test"), v.literal("script")),
@@ -209,10 +209,10 @@ export default defineSchema({
       maxIterations: v.int64(),
     }),
     createdAt: v.float64(),
-  }).index("by_run_doc", ["runDocId"]),
+  }).index("by_run", ["runId"]),
 
   reproPlans: defineTable({
-    runDocId: v.id("runs"),
+    runId: v.id("runs"),
     schemaVersion: v.string(),
     baseRevision: v.object({
       ref: v.string(),
@@ -235,10 +235,10 @@ export default defineSchema({
       entrypoint: v.optional(v.string()),
     }),
     createdAt: v.float64(),
-  }).index("by_run_doc", ["runDocId"]),
+  }).index("by_run", ["runId"]),
 
   reproRuns: defineTable({
-    runDocId: v.id("runs"),
+    runId: v.id("runs"),
     schemaVersion: v.string(),
     iteration: v.int64(),
     sandbox: v.object({
@@ -259,10 +259,10 @@ export default defineSchema({
     logStorageId: v.optional(v.id("_storage")),
     durationMs: v.int64(),
     createdAt: v.float64(),
-  }).index("by_run_doc", ["runDocId", "iteration"]),
+  }).index("by_run", ["runId", "iteration"]),
 
   verifications: defineTable({
-    runDocId: v.id("runs"),
+    runId: v.id("runs"),
     schemaVersion: v.string(),
     verdict: verdictValidator,
     determinism: v.object({
@@ -283,7 +283,7 @@ export default defineSchema({
     notes: v.optional(v.string()),
     logStorageId: v.optional(v.id("_storage")),
     createdAt: v.float64(),
-  }).index("by_run_doc", ["runDocId"]),
+  }).index("by_run", ["runId"]),
 
   webhookDeliveries: defineTable({
     deliveryId: v.string(),

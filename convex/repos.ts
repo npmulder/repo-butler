@@ -14,7 +14,7 @@ export const list = query({
     return await ctx.db
       .query("repos")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .collect();
+      .take(100);
   },
 });
 

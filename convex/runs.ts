@@ -52,8 +52,10 @@ export const create = internalMutation({
     }
 
     const now = Date.now();
-    const runDocId = await ctx.db.insert("runs", {
-      runId: "pending",
+    const runId = `${new Date(now).toISOString()}_${repo.fullName}_${issue.githubIssueNumber}`;
+
+    return await ctx.db.insert("runs", {
+      runId,
       userId: repo.userId,
       issueId: args.issueId,
       repoId: args.repoId,
@@ -64,24 +66,18 @@ export const create = internalMutation({
       status: "pending",
       startedAt: now,
     });
-
-    await ctx.db.patch(runDocId, {
-      runId: `run_${repo.owner}_${repo.name}_${issue.githubIssueNumber}_${runDocId}`,
-    });
-
-    return runDocId;
   },
 });
 
 export const updateStatus = internalMutation({
   args: {
-    runDocId: v.id("runs"),
+    runId: v.id("runs"),
     status: runStatusValidator,
     verdict: v.optional(verdictValidator),
     errorMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const run = await ctx.db.get(args.runDocId);
+    const run = await ctx.db.get(args.runId);
 
     if (!run) {
       throw new Error("Run not found");
@@ -106,7 +102,7 @@ export const updateStatus = internalMutation({
       patch.completedAt = Date.now();
     }
 
-    await ctx.db.patch(args.runDocId, patch);
+    await ctx.db.patch(args.runId, patch);
   },
 });
 
