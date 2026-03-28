@@ -21,7 +21,7 @@ export default async function DashboardLayout({
             title="Pipeline Overview"
             subtitle={`Tracking triage, reproduction, and verification for ${firstName}.`}
           />
-          <div className="flex-1 rounded-[26px] border border-border/90 bg-panel/78 p-5 sm:p-6">
+          <div className="flex-1 rounded-[26px] border border-border/90 bg-panel/[0.78] p-5 sm:p-6">
             {children}
           </div>
         </div>

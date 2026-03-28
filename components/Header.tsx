@@ -10,7 +10,7 @@ export function Header({
   subtitle: string;
 }) {
   return (
-    <header className="flex flex-col gap-4 rounded-[24px] border border-border/90 bg-panel/78 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <header className="flex flex-col gap-4 rounded-[24px] border border-border/90 bg-panel/[0.78] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-muted-foreground">
           Dashboard

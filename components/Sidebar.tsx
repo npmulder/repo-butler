@@ -24,7 +24,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-full rounded-[24px] border border-border/90 bg-panel/78 p-3 lg:w-[280px]">
+    <aside className="w-full rounded-[24px] border border-border/90 bg-panel/[0.78] p-3 lg:w-[280px]">
       <div className="mb-6 rounded-[20px] border border-border/80 bg-background/65 px-4 py-4">
         <div className="mb-4 flex items-center gap-3">
           <div className="rounded-2xl border border-border/80 bg-panel/80 p-2.5">

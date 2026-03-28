@@ -90,7 +90,7 @@ export function TerminalFrame({
             </div>
           ) : (
             <div
-              key={`${line.kind}-${line.label}`}
+              key={`${line.kind}-${line.label}-${index}`}
               className="grid gap-3 border-t border-white/[0.03] pt-3 first:border-t-0 first:pt-0 sm:grid-cols-[132px_1fr]"
             >
               <span
