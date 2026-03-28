@@ -46,6 +46,30 @@ export async function requireRepoAccess(
   return { repo, user };
 }
 
+export async function requireRunAccess(
+  ctx: AuthedCtx,
+  runId: Id<"runs">,
+): Promise<{ run: Doc<"runs">; repo: Doc<"repos">; user: Doc<"users"> }> {
+  const user = await requireCurrentUser(ctx);
+  const run = await ctx.db.get(runId);
+
+  if (!run) {
+    throw new Error("Run not found");
+  }
+
+  const repo = await ctx.db.get(run.repoId);
+
+  if (!repo) {
+    throw new Error("Repo not found");
+  }
+
+  if (repo.userId !== user._id) {
+    throw new Error("Not authorized for run");
+  }
+
+  return { run, repo, user };
+}
+
 export async function requireInstallationAccess(
   ctx: MutationCtx,
   installationId: Id<"githubInstallations">,

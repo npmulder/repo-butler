@@ -1,39 +1,198 @@
-import { FlaskConical, History, ShieldCheck } from "lucide-react";
+"use client";
+
+import { Activity, CircleCheckBig, Clock3, TriangleAlert } from "lucide-react";
+import { useQuery } from "convex/react";
 
 import { Panel } from "@/components/ui/panel";
+import { api } from "@/convex/_generated/api";
+import { cn } from "@/lib/utils";
+
+type RunStatus =
+  | "pending"
+  | "triaging"
+  | "awaiting_approval"
+  | "reproducing"
+  | "verifying"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+const statusStyles: Record<RunStatus, string> = {
+  pending: "border-white/10 bg-white/5 text-slate-100",
+  triaging: "border-sky-400/20 bg-sky-400/10 text-sky-100",
+  awaiting_approval: "border-amber-300/20 bg-amber-300/10 text-amber-100",
+  reproducing: "border-fuchsia-400/20 bg-fuchsia-400/10 text-fuchsia-100",
+  verifying: "border-cyan-300/20 bg-cyan-300/10 text-cyan-100",
+  completed: "border-emerald-400/20 bg-emerald-400/10 text-emerald-100",
+  failed: "border-rose-400/20 bg-rose-400/10 text-rose-100",
+  cancelled: "border-slate-400/20 bg-slate-400/10 text-slate-200",
+};
+
+const triggerLabels = {
+  issue_opened: "Issue opened",
+  label_added: "Label added",
+  comment_command: "Comment command",
+  manual: "Manual",
+} as const;
+
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+function formatStatus(status: RunStatus) {
+  return status.replaceAll("_", " ");
+}
 
 export default function RunsPage() {
+  const runs = useQuery(api.runs.listRecent, {});
+
+  if (runs === undefined) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Runs</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Loading the latest pipeline activity from Convex.
+          </p>
+        </div>
+        <Panel className="gap-3 p-5">
+          <p className="text-sm text-muted-foreground">
+            Subscribing to recent triage, reproduction, and verification runs.
+          </p>
+        </Panel>
+      </div>
+    );
+  }
+
+  const activeRuns = runs.filter((run) =>
+    ["pending", "triaging", "awaiting_approval", "reproducing", "verifying"].includes(run.status),
+  ).length;
+  const reproducedRuns = runs.filter(
+    (run) => run.status === "completed" && run.verdict === "reproduced",
+  ).length;
+  const failedRuns = runs.filter((run) =>
+    ["failed", "cancelled"].includes(run.status),
+  ).length;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Runs</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Triage, reproduction, and verification history.
-        </p>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Runs</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
+            Live Convex subscription for the latest pipeline runs, including triage status,
+            reproduction progress, and final verification verdicts.
+          </p>
+        </div>
+        <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-accent">
+          Live updates
+        </span>
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Panel className="gap-3 p-5">
-          <History className="h-5 w-5 text-accent" />
-          <h2 className="text-lg font-medium">Timeline</h2>
+
+      <section className="grid gap-4 lg:grid-cols-3">
+        <Panel className="gap-4 p-5">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Tracked runs</span>
+            <Clock3 className="h-4 w-4 text-accent" />
+          </div>
+          <p className="font-mono text-3xl font-semibold">{runs.length}</p>
           <p className="text-sm leading-7 text-muted-foreground">
-            Review each issue’s Planner → Generator → Evaluator run history and status transitions.
+            The 25 most recent runs for your connected repositories.
           </p>
         </Panel>
-        <Panel className="gap-3 p-5">
-          <FlaskConical className="h-5 w-5 text-accent" />
-          <h2 className="text-lg font-medium">Artifacts</h2>
+
+        <Panel className="gap-4 p-5">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Active runs</span>
+            <Activity className="h-4 w-4 text-accent" />
+          </div>
+          <p className="font-mono text-3xl font-semibold">{activeRuns}</p>
           <p className="text-sm leading-7 text-muted-foreground">
-            List generated failing tests, deterministic scripts, and runtime notes from sandbox attempts.
+            Pending, triaging, awaiting approval, reproducing, or verifying right now.
           </p>
         </Panel>
-        <Panel className="gap-3 p-5">
-          <ShieldCheck className="h-5 w-5 text-accent" />
-          <h2 className="text-lg font-medium">Verification evidence</h2>
+
+        <Panel className="gap-4 p-5">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Terminal outcomes</span>
+            <CircleCheckBig className="h-4 w-4 text-accent" />
+          </div>
+          <p className="font-mono text-3xl font-semibold">
+            {reproducedRuns}
+            <span className="mx-2 text-muted-foreground/60">/</span>
+            {failedRuns}
+          </p>
           <p className="text-sm leading-7 text-muted-foreground">
-            Preserve rerun counts, flake checks, and policy compliance outcomes before reporting back.
+            Reproduced runs versus failed or cancelled runs in the current window.
           </p>
         </Panel>
-      </div>
+      </section>
+
+      {runs.length === 0 ? (
+        <Panel className="gap-4 p-6">
+          <div className="flex items-start gap-3">
+            <TriangleAlert className="mt-0.5 h-4 w-4 text-accent" />
+            <div>
+              <h2 className="text-lg font-medium">No runs yet</h2>
+              <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                Once an issue is queued into the pipeline, its triage, reproduction, and
+                verification state will stream here automatically.
+              </p>
+            </div>
+          </div>
+        </Panel>
+      ) : (
+        <Panel className="overflow-hidden">
+          <div className="border-b border-border/80 px-5 py-4">
+            <h2 className="text-lg font-medium">Recent run history</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Status and verdict changes appear here without a page refresh.
+            </p>
+          </div>
+          <div className="divide-y divide-border/80">
+            {runs.map((run) => (
+              <article
+                key={run._id}
+                className="grid gap-4 px-5 py-4 transition hover:bg-background/40 lg:grid-cols-[minmax(0,1fr)_auto]"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="truncate font-mono text-sm text-foreground">{run.runId}</p>
+                    <span className="rounded-full border border-border/80 bg-background/70 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                      {triggerLabels[run.triggeredBy]}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                    <span>Started {dateFormatter.format(new Date(run.startedAt))}</span>
+                    <span>
+                      {run.completedAt
+                        ? `Completed ${dateFormatter.format(new Date(run.completedAt))}`
+                        : "Still in progress"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
+                  {run.verdict ? (
+                    <span className="rounded-full border border-border/80 bg-background/70 px-3 py-1 text-xs font-medium text-foreground">
+                      {run.verdict.replaceAll("_", " ")}
+                    </span>
+                  ) : null}
+                  <span
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs font-medium capitalize",
+                      statusStyles[run.status as RunStatus],
+                    )}
+                  >
+                    {formatStatus(run.status as RunStatus)}
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }
