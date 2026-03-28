@@ -3,7 +3,12 @@ import { ConvexHttpClient } from "convex/browser";
 import { NextRequest, NextResponse } from "next/server";
 
 import { api } from "@/convex/_generated/api";
-import { getInstallation, getInstallationOctokit } from "@/lib/github";
+import {
+  getInstallation,
+  getInstallationOctokit,
+  githubInstallStateCookieName,
+  validateGitHubInstallState,
+} from "@/lib/github";
 
 function redirectToRepos(
   request: NextRequest,
@@ -20,7 +25,23 @@ function redirectToRepos(
   return NextResponse.redirect(url);
 }
 
-function normalizePermissions(permissions: Record<string, unknown> | undefined) {
+function clearInstallStateCookie(response: NextResponse) {
+  response.cookies.set({
+    name: githubInstallStateCookieName,
+    value: "",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/api/github/setup",
+    maxAge: 0,
+  });
+
+  return response;
+}
+
+function normalizePermissions(
+  permissions: Record<string, unknown> | undefined,
+) {
   return Object.fromEntries(
     Object.entries(permissions ?? {}).filter(
       (entry): entry is [string, string] => typeof entry[1] === "string",
@@ -108,19 +129,39 @@ export const GET = async (request: NextRequest) => {
     return redirectToRepos(request, { error: "missing_installation" });
   }
 
+  const { accessToken, user } = await withAuth({ ensureSignedIn: true });
+  const state = request.nextUrl.searchParams.get("state");
+  const installStateNonce = request.cookies.get(
+    githubInstallStateCookieName,
+  )?.value;
+
+  if (!state || !installStateNonce) {
+    return clearInstallStateCookie(
+      redirectToRepos(request, { error: "missing_installation_state" }),
+    );
+  }
+
+  if (!validateGitHubInstallState(state, user.id, installStateNonce)) {
+    return clearInstallStateCookie(
+      redirectToRepos(request, { error: "invalid_installation_state" }),
+    );
+  }
+
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 
   if (!convexUrl) {
-    return redirectToRepos(request, { error: "missing_convex_url" });
-  }
-
-  const { accessToken, user } = await withAuth({ ensureSignedIn: true });
-
-  if (!accessToken) {
-    return redirectToRepos(request, { error: "missing_access_token" });
+    return clearInstallStateCookie(
+      redirectToRepos(request, { error: "missing_convex_url" }),
+    );
   }
 
   try {
+    if (!accessToken) {
+      return clearInstallStateCookie(
+        redirectToRepos(request, { error: "missing_access_token" }),
+      );
+    }
+
     const convex = new ConvexHttpClient(convexUrl, {
       auth: accessToken,
       logger: false,
@@ -138,9 +179,7 @@ export const GET = async (request: NextRequest) => {
               .trim(),
           }
         : {}),
-      ...(user.profilePictureUrl
-        ? { avatarUrl: user.profilePictureUrl }
-        : {}),
+      ...(user.profilePictureUrl ? { avatarUrl: user.profilePictureUrl } : {}),
     });
 
     const installationDocId = await convex.mutation(
@@ -159,15 +198,19 @@ export const GET = async (request: NextRequest) => {
       repos,
     });
 
-    return redirectToRepos(request, {
-      setup: normalizeSetupState(
-        request.nextUrl.searchParams.get("setup_action"),
-      ),
-      synced: String(syncResult.totalCount),
-    });
+    return clearInstallStateCookie(
+      redirectToRepos(request, {
+        setup: normalizeSetupState(
+          request.nextUrl.searchParams.get("setup_action"),
+        ),
+        synced: String(syncResult.totalCount),
+      }),
+    );
   } catch (error) {
     console.error("GitHub App setup failed", error);
 
-    return redirectToRepos(request, { error: "setup_failed" });
+    return clearInstallStateCookie(
+      redirectToRepos(request, { error: "setup_failed" }),
+    );
   }
 };

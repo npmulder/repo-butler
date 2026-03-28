@@ -69,6 +69,10 @@ export const upsert = mutation({
     };
 
     if (existing) {
+      if (existing.userId !== user._id) {
+        throw new Error("GitHub installation already belongs to another user");
+      }
+
       await ctx.db.replace(existing._id, {
         ...installationDoc,
         createdAt: existing.createdAt,

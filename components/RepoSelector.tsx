@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import {
   AlertTriangle,
@@ -23,12 +22,18 @@ const setupMessages = {
 } as const;
 
 const errorMessages = {
+  install_unavailable:
+    "GitHub App installation is not configured yet. Check the server-side GitHub App settings and retry.",
+  invalid_installation_state:
+    "The GitHub install callback could not be verified for this signed-in session. Start the install flow again from this page.",
   missing_access_token:
     "The WorkOS session did not include a Convex access token for setup.",
   missing_convex_url:
     "NEXT_PUBLIC_CONVEX_URL is not configured, so the installation could not be stored.",
   missing_installation:
     "GitHub did not include an installation ID in the setup redirect.",
+  missing_installation_state:
+    "The GitHub install callback was missing its signed setup state. Start the install flow again from this page.",
   setup_failed:
     "GitHub installation setup failed before Repo Butler could finish syncing repositories.",
 } as const;
@@ -50,12 +55,13 @@ export function RepoSelector({
 
   const setupState = searchParams.get("setup");
   const setupMessage =
-    setupState && setupState in setupMessages
+    setupState &&
+    Object.prototype.hasOwnProperty.call(setupMessages, setupState)
       ? setupMessages[setupState as keyof typeof setupMessages]
       : null;
   const errorCode = searchParams.get("error");
   const errorMessage =
-    errorCode && errorCode in errorMessages
+    errorCode && Object.prototype.hasOwnProperty.call(errorMessages, errorCode)
       ? errorMessages[errorCode as keyof typeof errorMessages]
       : null;
   const syncedCount = searchParams.get("synced");
@@ -134,18 +140,17 @@ export function RepoSelector({
           </div>
 
           {installationUrl ? (
-            <Link
+            <a
               className={buttonStyles({ className: "w-full sm:w-auto" })}
               href={installationUrl}
-              rel="noreferrer"
-              target="_blank"
             >
               Connect GitHub
               <ArrowUpRight className="h-4 w-4" />
-            </Link>
+            </a>
           ) : (
             <div className="rounded-xl border border-border/80 bg-background/60 px-4 py-3 text-sm text-muted-foreground">
-              Set `NEXT_PUBLIC_GITHUB_APP_SLUG` to enable GitHub App installs.
+              Set `NEXT_PUBLIC_GITHUB_APP_SLUG` and `GITHUB_APP_CLIENT_SECRET`
+              to enable GitHub App installs.
             </div>
           )}
         </div>
@@ -201,8 +206,8 @@ export function RepoSelector({
 
         {sortedRepos.length === 0 ? (
           <div className="rounded-[22px] border border-dashed border-border/80 bg-background/45 p-5 text-sm leading-7 text-muted-foreground">
-            Repo Butler has not synced any repositories yet. Complete the
-            GitHub App install flow, then return here to verify the imported
+            Repo Butler has not synced any repositories yet. Complete the GitHub
+            App install flow, then return here to verify the imported
             repositories.
           </div>
         ) : (
