@@ -264,6 +264,46 @@ async function testBotCommand() {
   assert.equal(state.issues.length, 1, "command should snapshot current issue context");
 }
 
+async function testStatusCommandRequiresActiveRepo() {
+  const inactiveState = createBaseState();
+  const inactiveResult = await processWebhookDelivery(
+    createMemoryStore(inactiveState),
+    {
+      deliveryId: "delivery-4b",
+      event: "issue_comment",
+      action: "created",
+      payload: {
+        ...createIssuePayload("created", "octo/inactive"),
+        comment: { body: "@repobutler status" },
+      },
+    },
+  );
+
+  assert.equal(
+    inactiveResult.dispatch,
+    "ignored",
+    "status command should be ignored for inactive repos",
+  );
+
+  const activeState = createBaseState();
+  const activeResult = await processWebhookDelivery(createMemoryStore(activeState), {
+    deliveryId: "delivery-4c",
+    event: "issue_comment",
+    action: "created",
+    payload: {
+      ...createIssuePayload("created"),
+      comment: { body: "@repobutler status" },
+    },
+  });
+
+  assert.equal(
+    activeResult.dispatch,
+    "status_command",
+    "status command should dispatch for active repos",
+  );
+  assert.equal(activeState.runs.length, 0, "status command must not create a run");
+}
+
 async function testInactiveRepoIgnored() {
   const state = createBaseState();
   const result = await processWebhookDelivery(createMemoryStore(state), {
@@ -305,6 +345,7 @@ async function main() {
   await testIssueOpened();
   await testReproLabel();
   await testBotCommand();
+  await testStatusCommandRequiresActiveRepo();
   await testInactiveRepoIgnored();
   await testInstallationSuspend();
 

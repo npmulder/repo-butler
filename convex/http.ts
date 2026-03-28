@@ -48,20 +48,28 @@ http.route({
       return new Response("Invalid signature", { status: 401 });
     }
 
-    let payload: { action?: unknown };
+    let payload: unknown;
 
     try {
-      payload = JSON.parse(bodyText) as { action?: unknown };
+      payload = JSON.parse(bodyText) as unknown;
     } catch {
       return new Response("Invalid JSON payload", { status: 400 });
     }
+
+    const action =
+      typeof payload === "object" &&
+      payload !== null &&
+      "action" in payload &&
+      typeof payload.action === "string"
+        ? payload.action
+        : "";
 
     try {
       const result = await ctx.runMutation(internal.webhooks.processWebhook, {
         deliveryId,
         event,
-        action: typeof payload.action === "string" ? payload.action : "",
-        payload: bodyText,
+        action,
+        payload,
       });
 
       return new Response(result.duplicate ? "Already processed" : "OK", {

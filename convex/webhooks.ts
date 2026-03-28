@@ -138,20 +138,18 @@ export const processWebhook = internalMutation({
     deliveryId: v.string(),
     event: v.string(),
     action: v.string(),
-    payload: v.string(),
+    payload: v.any(),
   },
   returns: v.object({
     duplicate: v.boolean(),
     dispatch: webhookDispatchValidator,
   }),
   handler: async (ctx, args) => {
-    const payload = JSON.parse(args.payload) as unknown;
-
     return await processWebhookDelivery(createWebhookStore(ctx), {
       deliveryId: args.deliveryId,
       event: args.event,
       action: args.action,
-      payload,
+      payload: args.payload,
     });
   },
 });

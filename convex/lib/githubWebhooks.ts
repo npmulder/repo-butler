@@ -338,7 +338,11 @@ export async function processWebhookDelivery<
       ? extractIssueSnapshotInput(repo.id, input.payload)
       : null;
 
-    if (repo && issueInput && (command === "triage" || command === "reproduce")) {
+    if (
+      repo &&
+      issueInput &&
+      (command === "triage" || command === "reproduce")
+    ) {
       const issue = await store.createIssueSnapshot(issueInput);
       await createRunForIssue(
         store,
@@ -348,7 +352,7 @@ export async function processWebhookDelivery<
         processedAt,
       );
       dispatch = "comment_command";
-    } else if (command === "status") {
+    } else if (repo && issueInput && command === "status") {
       dispatch = "status_command";
     }
   } else if (input.event === "installation") {
