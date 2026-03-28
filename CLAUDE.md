@@ -2,9 +2,25 @@
 
 ## What is Repo Butler?
 
-Repo Butler is an **operator-grade control plane for repository operations**, built under the Claude Harness project. It provides a dashboard where authenticated users can connect their GitHub repositories, trigger and monitor automated runs (CI/CD-style operations, code analysis, migrations), and manage workspace settings — all through a real-time web interface backed by a serverless database.
+Repo Butler is an **AI-powered issue triage and automated bug reproduction tool for open-source maintainers**, built on the Claude Harness Planner → Generator → Evaluator pattern.
 
-Think of it as the "mission control" layer that sits between a user's GitHub repos and the agentic workflows that operate on them.
+It watches connected GitHub repositories for new issues, automatically classifies and triages them, then produces **verified reproduction artifacts** — failing tests and deterministic repro scripts — so maintainers get proof before they start fixing.
+
+### The Pipeline
+
+| Stage | Agent Role | What it does |
+|---|---|---|
+| **Triage** | Planner | Ingests issue context, produces structured triage artifact (severity, category, label suggestions, reproduction hypothesis). Maintainers can approve or override via a configurable approval gate. |
+| **Reproduce** | Generator | Sets up a sandboxed environment (devcontainer → Dockerfile → bootstrap fallback), iteratively generates reproduction artifacts (failing tests, deterministic scripts) using a runtime-feedback refinement loop. |
+| **Verify** | Evaluator | Re-runs the reproduction artifact in a clean sandbox, checks determinism (3 reruns, 0% flake rate) and policy compliance (no network, no secrets), then posts results back to the GitHub issue with full evidence. |
+
+### Key Differentiator
+
+**Reproduction-first, not fix-first.** Repo Butler produces verified evidence (fail-to-pass tests, deterministic repro scripts with verification evidence) before anyone writes a line of fix code.
+
+### Target Audience
+
+Open-source maintainers and engineering teams who deal with unverified bug reports and want automated proof before starting fixes.
 
 ## Tech Stack
 
@@ -50,10 +66,10 @@ Think of it as the "mission control" layer that sits between a user's GitHub rep
 - **`app/(auth)/`** — Public auth pages: `/login`, `/signup`
 - **`app/api/auth/`** — Auth API routes: login redirect, signup redirect, WorkOS callback
 - **`app/(dashboard)/`** — Protected routes behind WorkOS middleware. Contains:
-  - `dashboard/` — Overview page
-  - `dashboard/repos/` — Repository management (connect, list, configure repos)
-  - `dashboard/runs/` — Execution history and run status
-  - `dashboard/settings/` — Workspace and account settings
+  - `dashboard/` — Pipeline activity and reproduction status overview
+  - `dashboard/repos/` — Connected repositories and GitHub App installations
+  - `dashboard/runs/` — Triage, reproduction, and verification history
+  - `dashboard/settings/` — Team, notifications, and approval preferences
 
 ### Backend (Convex)
 
@@ -61,7 +77,7 @@ All server-side logic lives in `convex/`:
 
 - **`schema.ts`** — Database table definitions (source of truth for data model)
 - **`auth.ts`** — WorkOS AuthKit component configuration
-- **`http.ts`** — HTTP router for webhooks (WorkOS user sync, future GitHub webhooks)
+- **`http.ts`** — HTTP router for webhooks (WorkOS user sync, GitHub issue/installation events)
 - **`convex.config.ts`** — App-level config with AuthKit component registration
 - **`_generated/`** — Auto-generated types (never edit manually)
 
@@ -175,14 +191,14 @@ pnpm build                # Production build
 
 ## Planned Feature Roadmap
 
-These are the major features to be built on top of the current scaffold:
+Matches the Linear project milestones (Phase 1–5):
 
 1. **Repository onboarding** — GitHub App installation flow, repo listing, connection management
-2. **Run orchestration** — Trigger, monitor, and review automated runs per repo
-3. **Run history** — Searchable log of past executions with status, duration, and outputs
-4. **Workspace settings** — Team management, API key rotation, notification preferences
-5. **Real-time updates** — Convex subscriptions for live dashboard state (run progress, repo status)
-6. **GitHub webhooks** — Push, PR, and installation events processed via Convex HTTP actions
+2. **Issue ingestion** — GitHub webhook processing (issues opened, labeled, commented), issue snapshot pipeline into Convex
+3. **Triage pipeline** — Triager agent (Planner role) with Claude API, structured `triage.json` artifacts, label taxonomy, configurable maintainer approval gate
+4. **Reproduction pipeline** — Sandbox runner (Docker, network-off default), Reproducer agent (Generator role), environment strategy (devcontainer → Dockerfile → bootstrap), runtime-feedback refinement loop, `repro_plan.json` and `repro_run.json` artifacts
+5. **Verification pipeline** — Verifier agent (Evaluator role), `repro_contract.json` written before reproduction, determinism checks (3 reruns, 0% flake rate), policy compliance enforcement, `verification.json` verdict, GitHub reporter posting results as structured issue comments
+6. **Hardening & scale** — Hybrid GitHub App + Actions dispatcher, benchmark regression suite (SWT-Bench + TDD-Bench subsets), security hardening (token isolation, audit logs, secret management)
 
 ## Orchestration Context
 
