@@ -5,19 +5,13 @@ import { useQuery } from "convex/react";
 
 import { Panel } from "@/components/ui/panel";
 import { api } from "@/convex/_generated/api";
+import type { Doc } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 
-type RunStatus =
-  | "pending"
-  | "triaging"
-  | "awaiting_approval"
-  | "reproducing"
-  | "verifying"
-  | "completed"
-  | "failed"
-  | "cancelled";
+type RunStatus = Doc<"runs">["status"];
+type RunTrigger = Doc<"runs">["triggeredBy"];
 
-const statusStyles: Record<RunStatus, string> = {
+const statusStyles = {
   pending: "border-white/10 bg-white/5 text-slate-100",
   triaging: "border-sky-400/20 bg-sky-400/10 text-sky-100",
   awaiting_approval: "border-amber-300/20 bg-amber-300/10 text-amber-100",
@@ -26,22 +20,37 @@ const statusStyles: Record<RunStatus, string> = {
   completed: "border-emerald-400/20 bg-emerald-400/10 text-emerald-100",
   failed: "border-rose-400/20 bg-rose-400/10 text-rose-100",
   cancelled: "border-slate-400/20 bg-slate-400/10 text-slate-200",
-};
+} satisfies Record<RunStatus, string>;
 
 const triggerLabels = {
   issue_opened: "Issue opened",
   label_added: "Label added",
   comment_command: "Comment command",
   manual: "Manual",
-} as const;
+} satisfies Record<RunTrigger, string>;
 
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
+const activeStatuses: readonly RunStatus[] = [
+  "pending",
+  "triaging",
+  "awaiting_approval",
+  "reproducing",
+  "verifying",
+] as const;
+
+const failedStatuses: readonly RunStatus[] = ["failed", "cancelled"] as const;
+
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
   timeStyle: "short",
+  timeZone: "UTC",
 });
 
 function formatStatus(status: RunStatus) {
   return status.replaceAll("_", " ");
+}
+
+function formatTimestamp(timestamp: number) {
+  return `${dateFormatter.format(new Date(timestamp))} UTC`;
 }
 
 export default function RunsPage() {
@@ -65,15 +74,11 @@ export default function RunsPage() {
     );
   }
 
-  const activeRuns = runs.filter((run) =>
-    ["pending", "triaging", "awaiting_approval", "reproducing", "verifying"].includes(run.status),
-  ).length;
+  const activeRuns = runs.filter((run) => activeStatuses.includes(run.status)).length;
   const reproducedRuns = runs.filter(
     (run) => run.status === "completed" && run.verdict === "reproduced",
   ).length;
-  const failedRuns = runs.filter((run) =>
-    ["failed", "cancelled"].includes(run.status),
-  ).length;
+  const failedRuns = runs.filter((run) => failedStatuses.includes(run.status)).length;
 
   return (
     <div className="space-y-6">
@@ -164,11 +169,9 @@ export default function RunsPage() {
                     </span>
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
-                    <span>Started {dateFormatter.format(new Date(run.startedAt))}</span>
+                    <span>Started {formatTimestamp(run.startedAt)}</span>
                     <span>
-                      {run.completedAt
-                        ? `Completed ${dateFormatter.format(new Date(run.completedAt))}`
-                        : "Still in progress"}
+                      {run.completedAt ? `Completed ${formatTimestamp(run.completedAt)}` : "Still in progress"}
                     </span>
                   </div>
                 </div>
@@ -182,10 +185,10 @@ export default function RunsPage() {
                   <span
                     className={cn(
                       "rounded-full border px-3 py-1 text-xs font-medium capitalize",
-                      statusStyles[run.status as RunStatus],
+                      statusStyles[run.status],
                     )}
                   >
-                    {formatStatus(run.status as RunStatus)}
+                    {formatStatus(run.status)}
                   </span>
                 </div>
               </article>

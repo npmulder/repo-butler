@@ -1,7 +1,9 @@
 import { v } from "convex/values";
 
+import type { Id } from "./_generated/dataModel";
+import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { requireCurrentUser, requireRunAccess } from "./lib/auth";
+import { requireCurrentUser, requireLoadedRunAccess, requireRunAccess } from "./lib/auth";
 
 const triageSchemaVersionValidator = v.literal("rb.triage.v1");
 const reproContractSchemaVersionValidator = v.literal("rb.repro_contract.v1");
@@ -140,6 +142,35 @@ const evidenceValidator = v.object({
   exitCode: v.int64(),
   stderrSha256: v.optional(v.string()),
 });
+
+async function findSingleRunIdForLogStorage(
+  ctx: QueryCtx,
+  storageId: Id<"_storage">,
+): Promise<Id<"runs"> | null> {
+  const runIds = new Set<Id<"runs">>();
+
+  for await (const reproRun of ctx.db
+    .query("reproRuns")
+    .withIndex("by_log_storage_id", (q) => q.eq("logStorageId", storageId))) {
+    runIds.add(reproRun.runId);
+
+    if (runIds.size > 1) {
+      throw new Error("Log storage ID is referenced by multiple runs");
+    }
+  }
+
+  for await (const verification of ctx.db
+    .query("verifications")
+    .withIndex("by_log_storage_id", (q) => q.eq("logStorageId", storageId))) {
+    runIds.add(verification.runId);
+
+    if (runIds.size > 1) {
+      throw new Error("Log storage ID is referenced by multiple runs");
+    }
+  }
+
+  return runIds.values().next().value ?? null;
+}
 
 export const storeTriage = mutation({
   args: {
@@ -342,15 +373,14 @@ export const storeVerification = mutation({
 export const getRunBundle = query({
   args: { runId: v.id("runs") },
   handler: async (ctx, args) => {
-    await requireCurrentUser(ctx);
-
+    const user = await requireCurrentUser(ctx);
     const run = await ctx.db.get(args.runId);
 
     if (!run) {
       return null;
     }
 
-    await requireRunAccess(ctx, args.runId);
+    await requireLoadedRunAccess(ctx, user, run);
 
     const [triage, contract, plan, reproRuns, verification, issue] = await Promise.all([
       ctx.db
@@ -390,9 +420,9 @@ export const getRunBundle = query({
 });
 
 export const generateUploadUrl = mutation({
-  args: {},
-  handler: async (ctx) => {
-    await requireCurrentUser(ctx);
+  args: { runId: v.id("runs") },
+  handler: async (ctx, args) => {
+    await requireRunAccess(ctx, args.runId);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -400,25 +430,20 @@ export const generateUploadUrl = mutation({
 export const getLogUrl = query({
   args: { storageId: v.id("_storage") },
   handler: async (ctx, args) => {
-    await requireCurrentUser(ctx);
-
-    const reproRun = await ctx.db
-      .query("reproRuns")
-      .withIndex("by_log_storage_id", (q) => q.eq("logStorageId", args.storageId))
-      .unique();
-    const verification = !reproRun
-      ? await ctx.db
-          .query("verifications")
-          .withIndex("by_log_storage_id", (q) => q.eq("logStorageId", args.storageId))
-          .unique()
-      : null;
-    const runId = reproRun?.runId ?? verification?.runId;
+    const user = await requireCurrentUser(ctx);
+    const runId = await findSingleRunIdForLogStorage(ctx, args.storageId);
 
     if (!runId) {
       return null;
     }
 
-    await requireRunAccess(ctx, runId);
+    const run = await ctx.db.get(runId);
+
+    if (!run) {
+      return null;
+    }
+
+    await requireLoadedRunAccess(ctx, user, run);
 
     return await ctx.storage.getUrl(args.storageId);
   },

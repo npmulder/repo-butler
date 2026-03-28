@@ -28,11 +28,12 @@ export async function requireCurrentUser(ctx: AuthedCtx): Promise<Doc<"users">> 
   return user;
 }
 
-export async function requireRepoAccess(
+async function requireOwnedRepo(
   ctx: AuthedCtx,
   repoId: Id<"repos">,
-): Promise<{ repo: Doc<"repos">; user: Doc<"users"> }> {
-  const user = await requireCurrentUser(ctx);
+  user: Doc<"users">,
+  unauthorizedMessage: string,
+) {
   const repo = await ctx.db.get(repoId);
 
   if (!repo) {
@@ -40,10 +41,30 @@ export async function requireRepoAccess(
   }
 
   if (repo.userId !== user._id) {
-    throw new Error("Not authorized for repo");
+    throw new Error(unauthorizedMessage);
   }
 
+  return repo;
+}
+
+export async function requireRepoAccess(
+  ctx: AuthedCtx,
+  repoId: Id<"repos">,
+): Promise<{ repo: Doc<"repos">; user: Doc<"users"> }> {
+  const user = await requireCurrentUser(ctx);
+  const repo = await requireOwnedRepo(ctx, repoId, user, "Not authorized for repo");
+
   return { repo, user };
+}
+
+export async function requireLoadedRunAccess(
+  ctx: AuthedCtx,
+  user: Doc<"users">,
+  run: Doc<"runs">,
+): Promise<{ run: Doc<"runs">; repo: Doc<"repos">; user: Doc<"users"> }> {
+  const repo = await requireOwnedRepo(ctx, run.repoId, user, "Not authorized for run");
+
+  return { run, repo, user };
 }
 
 export async function requireRunAccess(
@@ -57,17 +78,7 @@ export async function requireRunAccess(
     throw new Error("Run not found");
   }
 
-  const repo = await ctx.db.get(run.repoId);
-
-  if (!repo) {
-    throw new Error("Repo not found");
-  }
-
-  if (repo.userId !== user._id) {
-    throw new Error("Not authorized for run");
-  }
-
-  return { run, repo, user };
+  return await requireLoadedRunAccess(ctx, user, run);
 }
 
 export async function requireInstallationAccess(
