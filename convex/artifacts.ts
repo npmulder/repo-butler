@@ -2,35 +2,16 @@ import { v } from "convex/values";
 
 import type { Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { requireCurrentUser, requireLoadedRunAccess, requireRunAccess } from "./lib/auth";
 
-const triageSchemaVersionValidator = v.literal("rb.triage.v1");
 const reproContractSchemaVersionValidator = v.literal("rb.repro_contract.v1");
 const reproPlanSchemaVersionValidator = v.literal("rb.repro_plan.v1");
 const reproRunSchemaVersionValidator = v.literal("rb.repro_run.v1");
 const verificationSchemaVersionValidator = v.literal("rb.verification.v1");
-
-const classificationValidator = v.object({
-  type: v.union(
-    v.literal("bug"),
-    v.literal("docs"),
-    v.literal("question"),
-    v.literal("feature"),
-    v.literal("build"),
-    v.literal("test"),
-  ),
-  area: v.optional(v.array(v.string())),
-  severity: v.optional(
-    v.union(
-      v.literal("low"),
-      v.literal("medium"),
-      v.literal("high"),
-      v.literal("critical"),
-    ),
-  ),
-  labelsSuggested: v.array(v.string()),
-  confidence: v.float64(),
+const triageTokensUsedValidator = v.object({
+  input: v.number(),
+  output: v.number(),
 });
 
 const failureSignalValidator = v.object({
@@ -42,12 +23,6 @@ const failureSignalValidator = v.object({
     v.literal("timeout"),
   ),
   matchAny: v.optional(v.array(v.string())),
-});
-
-const reproHypothesisValidator = v.object({
-  minimalStepsGuess: v.optional(v.array(v.string())),
-  expectedFailureSignal: failureSignalValidator,
-  environmentAssumptions: v.optional(v.any()),
 });
 
 const acceptanceValidator = v.object({
@@ -172,34 +147,76 @@ async function findSingleRunIdForLogStorage(
   return runIds.values().next().value ?? null;
 }
 
-export const storeTriage = mutation({
+export const storeTriage = internalMutation({
   args: {
     runId: v.id("runs"),
-    schemaVersion: triageSchemaVersionValidator,
-    classification: classificationValidator,
-    reproHypothesis: reproHypothesisValidator,
-    reproEligible: v.boolean(),
-    rawResponse: v.optional(v.string()),
+    artifact: v.any(),
+    tokensUsed: triageTokensUsedValidator,
   },
   handler: async (ctx, args) => {
-    await requireRunAccess(ctx, args.runId);
+    const run = await ctx.db.get(args.runId);
+
+    if (!run) {
+      throw new Error("Run not found");
+    }
 
     const existing = await ctx.db
       .query("triageResults")
       .withIndex("by_run", (q) => q.eq("runId", args.runId))
       .unique();
     const createdAt = existing?.createdAt ?? Date.now();
+    const legacyClassification = {
+      type: args.artifact.classification.type,
+      ...(args.artifact.classification.area !== undefined
+        ? { area: args.artifact.classification.area }
+        : {}),
+      ...(args.artifact.classification.severity !== undefined
+        ? { severity: args.artifact.classification.severity }
+        : {}),
+      labelsSuggested: args.artifact.classification.labels_suggested,
+      confidence: args.artifact.classification.confidence,
+    };
+    const legacyReproHypothesis = {
+      ...(args.artifact.repro_hypothesis.minimal_steps_guess !== undefined
+        ? { minimalStepsGuess: args.artifact.repro_hypothesis.minimal_steps_guess }
+        : {}),
+      expectedFailureSignal: {
+        kind: args.artifact.repro_hypothesis.expected_failure_signal.kind,
+        ...(args.artifact.repro_hypothesis.expected_failure_signal.match_any !== undefined
+          ? {
+              matchAny:
+                args.artifact.repro_hypothesis.expected_failure_signal.match_any,
+            }
+          : {}),
+      },
+      ...(args.artifact.repro_hypothesis.environment_assumptions !== undefined
+        ? {
+            environmentAssumptions:
+              args.artifact.repro_hypothesis.environment_assumptions,
+          }
+        : {}),
+    };
     const doc = {
       runId: args.runId,
-      schemaVersion: args.schemaVersion,
-      classification: args.classification,
-      reproHypothesis: args.reproHypothesis,
-      reproEligible: args.reproEligible,
-      ...(args.rawResponse !== undefined ? { rawResponse: args.rawResponse } : {}),
+      repoId: run.repoId,
+      issueId: run.issueId,
+      artifact: args.artifact,
+      classificationType: args.artifact.classification.type,
+      ...(args.artifact.classification.severity !== undefined
+        ? { severity: args.artifact.classification.severity }
+        : {}),
+      confidence: args.artifact.classification.confidence,
+      reproEligible: args.artifact.repro_eligible,
+      summary: args.artifact.summary,
+      tokensUsed: args.tokensUsed,
+      schemaVersion: args.artifact.schema_version,
+      classification: legacyClassification,
+      reproHypothesis: legacyReproHypothesis,
+      ...(existing?.rawResponse !== undefined
+        ? { rawResponse: existing.rawResponse }
+        : {}),
       createdAt,
     };
-
-    await ctx.db.patch(args.runId, { status: "triaging" });
 
     if (existing) {
       await ctx.db.replace(existing._id, doc);

@@ -80,7 +80,7 @@ export interface WebhookStore<
     input: IssueSnapshotInput<RepoId>,
   ): Promise<WebhookIssue<IssueId, RepoId>>;
   createRun(input: CreateRunInput<RepoId, IssueId, UserId>): Promise<RunId>;
-  scheduleTriage(runId: RunId): Promise<void>;
+  scheduleTriage(runId: RunId, issueId: IssueId): Promise<void>;
   getInstallationByInstallationId(
     installationId: bigint,
   ): Promise<WebhookInstallation<InstallationId> | null>;
@@ -270,7 +270,7 @@ async function createRunForIssue<RepoId, IssueId, RunId, InstallationId, UserId>
     startedAt,
   });
 
-  await store.scheduleTriage(runId);
+  await store.scheduleTriage(runId, issue.id);
 }
 
 export async function processWebhookDelivery<

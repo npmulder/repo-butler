@@ -98,9 +98,10 @@ function createWebhookStore(
         startedAt,
       });
     },
-    scheduleTriage: async (runId) => {
+    scheduleTriage: async (runId, issueId) => {
       await ctx.scheduler.runAfter(0, internal.pipeline.runTriage, {
-        runDocId: runId,
+        runId,
+        issueId,
       });
     },
     getInstallationByInstallationId: async (installationId) => {

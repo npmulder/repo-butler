@@ -186,13 +186,45 @@ export default defineSchema({
 
   triageResults: defineTable({
     runId: v.id("runs"),
-    schemaVersion: v.string(),
-    classification: classificationValidator,
-    reproHypothesis: reproHypothesisValidator,
-    reproEligible: v.boolean(),
+    repoId: v.optional(v.id("repos")),
+    issueId: v.optional(v.id("issues")),
+    artifact: v.optional(v.any()),
+    classificationType: v.optional(
+      v.union(
+        v.literal("bug"),
+        v.literal("docs"),
+        v.literal("question"),
+        v.literal("feature"),
+        v.literal("build"),
+        v.literal("test"),
+      ),
+    ),
+    severity: v.optional(
+      v.union(
+        v.literal("low"),
+        v.literal("medium"),
+        v.literal("high"),
+        v.literal("critical"),
+      ),
+    ),
+    confidence: v.optional(v.float64()),
+    reproEligible: v.optional(v.boolean()),
+    summary: v.optional(v.string()),
+    tokensUsed: v.optional(
+      v.object({
+        input: v.float64(),
+        output: v.float64(),
+      }),
+    ),
+    schemaVersion: v.optional(v.string()),
+    classification: v.optional(classificationValidator),
+    reproHypothesis: v.optional(reproHypothesisValidator),
     rawResponse: v.optional(v.string()),
     createdAt: v.float64(),
-  }).index("by_run", ["runId"]),
+  })
+    .index("by_run", ["runId"])
+    .index("by_repo", ["repoId"])
+    .index("by_classification_type", ["classificationType"]),
 
   reproContracts: defineTable({
     runId: v.id("runs"),

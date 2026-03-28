@@ -10,7 +10,8 @@
     "issue",
     "classification",
     "repro_hypothesis",
-    "repro_eligible"
+    "repro_eligible",
+    "summary"
   ],
   "additionalProperties": false,
   "properties": {
@@ -120,6 +121,10 @@
     },
     "repro_eligible": {
       "type": "boolean"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
     }
   }
 }
