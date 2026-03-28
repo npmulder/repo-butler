@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repobutler.dev/schemas/verification.v1.json",
+  "title": "Verification",
+  "type": "object",
+  "required": ["schema_version", "run_id", "verdict", "determinism", "policy_checks", "evidence"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rb.verification.v1"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verdict": {
+      "enum": [
+        "reproduced",
+        "not_reproduced",
+        "flaky",
+        "policy_violation",
+        "env_setup_failed",
+        "budget_exhausted"
+      ]
+    },
+    "determinism": {
+      "type": "object",
+      "required": ["reruns", "fails", "flake_rate"],
+      "additionalProperties": false,
+      "properties": {
+        "reruns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fails": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "flake_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "policy_checks": {
+      "type": "object",
+      "required": ["network_used", "secrets_accessed", "writes_outside_workspace"],
+      "additionalProperties": false,
+      "properties": {
+        "network_used": {
+          "type": "boolean"
+        },
+        "secrets_accessed": {
+          "type": "boolean"
+        },
+        "writes_outside_workspace": {
+          "type": "boolean"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["failing_cmd", "exit_code"],
+      "additionalProperties": false,
+      "properties": {
+        "failing_cmd": {
+          "type": "string"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "stderr_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

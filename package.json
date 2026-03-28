@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
+    "generate:schema-types": "tsx scripts/generate-schema-types.ts",
+    "validate:schemas": "tsx scripts/validate-schemas.ts",
     "convex:dev": "convex dev",
     "convex:codegen": "convex codegen"
   },
@@ -15,6 +17,8 @@
     "@convex-dev/workos": "0.0.1",
     "@convex-dev/workos-authkit": "0.1.6",
     "@workos-inc/authkit-nextjs": "2.4.6",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1",
     "clsx": "^2.1.1",
     "convex": "1.34.1",
     "lucide-react": "^1.7.0",
@@ -31,10 +35,12 @@
     "autoprefixer": "^10.4.27",
     "eslint": "^9",
     "eslint-config-next": "15.5.14",
+    "json-schema-to-typescript": "^15.0.4",
     "postcss": "^8.5.8",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

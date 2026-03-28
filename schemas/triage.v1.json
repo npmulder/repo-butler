@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repobutler.dev/schemas/triage.v1.json",
+  "title": "Triage Result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "repo",
+    "issue",
+    "classification",
+    "repro_hypothesis",
+    "repro_eligible"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rb.triage.v1"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repo": {
+      "type": "object",
+      "required": ["owner", "name", "default_branch"],
+      "additionalProperties": false,
+      "properties": {
+        "owner": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "default_branch": {
+          "type": "string"
+        }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "required": ["number", "title", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "classification": {
+      "type": "object",
+      "required": ["type", "labels_suggested", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": ["bug", "docs", "question", "feature", "build", "test"]
+        },
+        "area": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "severity": {
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "labels_suggested": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "repro_hypothesis": {
+      "type": "object",
+      "required": ["expected_failure_signal"],
+      "additionalProperties": false,
+      "properties": {
+        "minimal_steps_guess": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expected_failure_signal": {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": ["exception", "assertion", "nonzero_exit", "snapshot_diff", "timeout"]
+            },
+            "match_any": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "environment_assumptions": {
+          "type": "object"
+        }
+      }
+    },
+    "repro_eligible": {
+      "type": "boolean"
+    }
+  }
+}

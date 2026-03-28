@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 
 import { APP_META } from "@/lib/constants";
@@ -36,7 +37,9 @@ export default function RootLayout({
       <body
         className={`${plexSans.variable} ${plexMono.variable} min-h-screen bg-background font-sans text-foreground antialiased`}
       >
-        <Providers>{children}</Providers>
+        <AuthKitProvider>
+          <Providers>{children}</Providers>
+        </AuthKitProvider>
       </body>
     </html>
   );
