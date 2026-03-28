@@ -4,12 +4,14 @@
 
 @layer base {
   :root {
-    --background: 9 11 16;
-    --foreground: 241 245 249;
-    --panel: 13 17 24;
-    --panel-foreground: 241 245 249;
-    --muted-foreground: 148 163 184;
-    --border: 44 52 68;
+    --background: 13 17 23;
+    --foreground: 230 237 243;
+    --panel: 22 27 34;
+    --panel-foreground: 230 237 243;
+    --panel-muted: 33 38 45;
+    --terminal: 10 14 19;
+    --muted-foreground: 139 148 158;
+    --border: 48 54 61;
     --accent: 249 115 22;
     --ring: 251 146 60;
   }
@@ -24,8 +26,8 @@
 
   body {
     background:
-      radial-gradient(circle at top, rgba(249, 115, 22, 0.08), transparent 30%),
-      linear-gradient(180deg, rgba(10, 12, 18, 0.98), rgba(6, 8, 12, 1));
+      radial-gradient(circle at top, rgba(249, 115, 22, 0.08), transparent 28%),
+      linear-gradient(180deg, rgba(13, 17, 23, 1), rgba(11, 16, 22, 1));
     color: rgb(var(--foreground));
   }
 
@@ -34,12 +36,18 @@
     position: fixed;
     inset: 0;
     pointer-events: none;
-    background-image:
-      linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-    background-size: 48px 48px;
-    mask-image: linear-gradient(180deg, rgba(255, 255, 255, 0.45), transparent 80%);
-    opacity: 0.25;
+    background-image: radial-gradient(
+      rgba(230, 237, 243, 0.08) 0.8px,
+      transparent 0.8px
+    );
+    background-position: 0 0;
+    background-size: 18px 18px;
+    mask-image: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.16),
+      transparent 78%
+    );
+    opacity: 0.2;
   }
 
   a {
@@ -49,5 +57,20 @@
   ::selection {
     background: rgba(249, 115, 22, 0.35);
     color: rgb(var(--foreground));
+  }
+}
+
+@layer components {
+  .section-label {
+    @apply inline-flex items-center gap-2 font-mono text-[0.72rem] uppercase tracking-[0.28em] text-muted-foreground;
+  }
+
+  .section-rule {
+    @apply border-t border-border/70;
+  }
+
+  .terminal-shell {
+    @apply overflow-hidden rounded-[28px] border border-border/90 bg-terminal/95;
+    box-shadow: inset 0 1px 0 rgba(230, 237, 243, 0.03);
   }
 }
