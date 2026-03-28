@@ -4,6 +4,8 @@ import { authKit } from "./auth";
 
 const http = httpRouter();
 
-authKit.registerRoutes(http);
+if (authKit) {
+  authKit.registerRoutes(http);
+}
 
 export default http;

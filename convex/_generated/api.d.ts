@@ -10,6 +10,11 @@
 
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
+import type * as issues from "../issues.js";
+import type * as lib_auth from "../lib/auth.js";
+import type * as repos from "../repos.js";
+import type * as runs from "../runs.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -20,6 +25,11 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   http: typeof http;
+  issues: typeof issues;
+  "lib/auth": typeof lib_auth;
+  repos: typeof repos;
+  runs: typeof runs;
+  users: typeof users;
 }>;
 
 /**

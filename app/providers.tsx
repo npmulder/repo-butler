@@ -1,22 +1,32 @@
 "use client";
 
-import { useCallback, type PropsWithChildren } from "react";
+import { useCallback, useEffect, type PropsWithChildren } from "react";
 import { ConvexProviderWithAuthKit } from "@convex-dev/workos";
 import {
+  AuthKitProvider,
   useAccessToken,
   useAuth,
 } from "@workos-inc/authkit-nextjs/components";
 import { ConvexReactClient } from "convex/react";
 
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
 
-if (!convexUrl) {
-  throw new Error(
-    "NEXT_PUBLIC_CONVEX_URL is not set. Start Convex dev or add the deployment URL to .env.local.",
-  );
+function MissingConvexUrlProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      console.error(
+        "NEXT_PUBLIC_CONVEX_URL is not set. Convex hooks will remain unavailable until the environment variable is configured.",
+      );
+    }
+  }, []);
+
+  return <AuthKitProvider>{children}</AuthKitProvider>;
 }
-
-const convex = new ConvexReactClient(convexUrl);
 
 function useAuthKitForConvex() {
   const { user, loading } = useAuth();
@@ -38,9 +48,15 @@ function useAuthKitForConvex() {
 }
 
 export function Providers({ children }: PropsWithChildren) {
+  if (!convex) {
+    return <MissingConvexUrlProvider>{children}</MissingConvexUrlProvider>;
+  }
+
   return (
-    <ConvexProviderWithAuthKit client={convex} useAuth={useAuthKitForConvex}>
-      {children}
-    </ConvexProviderWithAuthKit>
+    <AuthKitProvider>
+      <ConvexProviderWithAuthKit client={convex} useAuth={useAuthKitForConvex}>
+        {children}
+      </ConvexProviderWithAuthKit>
+    </AuthKitProvider>
   );
 }
