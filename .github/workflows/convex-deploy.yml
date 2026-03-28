@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -21,7 +23,5 @@ jobs:
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
       - name: Deploy to Convex
-        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
+        if: ${{ env.CONVEX_DEPLOY_KEY != '' }}
         run: pnpm exec convex deploy
-        env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
