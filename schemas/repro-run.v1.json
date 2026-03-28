@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repobutler.dev/schemas/repro-run.v1.json",
+  "title": "Repro Run",
+  "type": "object",
+  "required": ["schema_version", "run_id", "iteration", "sandbox", "steps", "duration_ms"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rb.repro_run.v1"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "iteration": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sandbox": {
+      "type": "object",
+      "required": ["kind", "network"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": ["docker", "devcontainer", "github_runner", "local"]
+        },
+        "image_digest": {
+          "type": "string"
+        },
+        "network": {
+          "enum": ["disabled", "enabled"]
+        },
+        "uid": {
+          "type": "integer"
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "cmd", "exit_code"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "cmd": {
+            "type": "string"
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "stdout_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "stderr_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "failure_observed": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": ["exception", "assertion", "nonzero_exit", "snapshot_diff", "timeout"]
+        },
+        "match_any": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "trace_excerpt_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "artifact_content": {
+      "type": "string"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

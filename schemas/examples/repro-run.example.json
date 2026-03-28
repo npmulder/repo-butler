@@ -1,0 +1,35 @@
+{
+  "schema_version": "rb.repro_run.v1",
+  "run_id": "repro-run-001",
+  "iteration": 1,
+  "sandbox": {
+    "kind": "local",
+    "network": "disabled",
+    "uid": 1000
+  },
+  "steps": [
+    {
+      "name": "install",
+      "cmd": "pnpm install --frozen-lockfile",
+      "exit_code": 0,
+      "stdout_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stderr_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "duration_ms": 4200
+    },
+    {
+      "name": "validate:schemas",
+      "cmd": "pnpm validate:schemas",
+      "exit_code": 1,
+      "stdout_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "stderr_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "duration_ms": 1500
+    }
+  ],
+  "failure_observed": {
+    "kind": "assertion",
+    "match_any": ["Validation failed", "must have required property"],
+    "trace_excerpt_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  },
+  "artifact_content": "pnpm validate:schemas",
+  "duration_ms": 5700
+}

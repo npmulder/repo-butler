@@ -1,0 +1,21 @@
+{
+  "schema_version": "rb.verification.v1",
+  "run_id": "verification-001",
+  "verdict": "reproduced",
+  "determinism": {
+    "reruns": 3,
+    "fails": 3,
+    "flake_rate": 0
+  },
+  "policy_checks": {
+    "network_used": false,
+    "secrets_accessed": false,
+    "writes_outside_workspace": false
+  },
+  "evidence": {
+    "failing_cmd": "pnpm validate:schemas",
+    "exit_code": 1,
+    "stderr_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  },
+  "notes": "The artifact fails deterministically on every rerun without using network access or mounted secrets."
+}
