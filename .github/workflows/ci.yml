@@ -9,6 +9,8 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      CONVEX_DEPLOYMENT: ${{ secrets.CONVEX_DEPLOYMENT }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -19,6 +21,8 @@ jobs:
           node-version: "20"
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
+      - if: ${{ env.CONVEX_DEPLOYMENT != '' }}
+        run: pnpm run convex:codegen
       - run: pnpm generate:schema-types
       - run: pnpm validate:schemas
       - run: pnpm lint

@@ -25,7 +25,16 @@ pnpm install
 cp .env.example .env.local
 ```
 
-3. Start Convex development mode.
+3. Select the shared Convex deployment and populate the generated Convex env vars:
+
+```bash
+pnpm exec convex dev --once --configure existing
+```
+
+This writes `CONVEX_DEPLOYMENT`, `NEXT_PUBLIC_CONVEX_URL`, and
+`NEXT_PUBLIC_CONVEX_SITE_URL` into `.env.local`.
+
+4. Start Convex development mode.
 
 For a normal interactive workflow:
 
@@ -39,7 +48,7 @@ For headless or unattended sessions:
 CONVEX_AGENT_MODE=anonymous pnpm exec convex dev
 ```
 
-4. Start Next.js:
+5. Start Next.js:
 
 ```bash
 pnpm dev
@@ -50,6 +59,8 @@ The app runs at `http://localhost:3000`.
 ## Environment variables
 
 - `NEXT_PUBLIC_CONVEX_URL`: Convex deployment URL used by the React client.
+- `CONVEX_DEPLOYMENT`: Convex deployment ref used by CLI commands such as
+  `pnpm run convex:codegen`.
 - `WORKOS_CLIENT_ID`: WorkOS AuthKit client ID.
 - `WORKOS_API_KEY`: WorkOS API key. Keep this server-side only.
 - `WORKOS_COOKIE_PASSWORD`: 32+ character secret used for encrypted session cookies.
@@ -58,6 +69,7 @@ The app runs at `http://localhost:3000`.
 ## Validation commands
 
 ```bash
+pnpm run convex:codegen
 pnpm lint
 pnpm tsc --noEmit
 pnpm build
@@ -66,5 +78,7 @@ pnpm dev
 
 ## CI and deployment
 
-- `.github/workflows/ci.yml` runs lint, type-check, and build on pushes and pull requests.
+- `.github/workflows/ci.yml` runs Convex codegen (when the
+  `CONVEX_DEPLOYMENT` secret is present), lint, type-check, and build on pushes
+  and pull requests.
 - `.github/workflows/convex-deploy.yml` deploys to Convex when `CONVEX_DEPLOY_KEY` is present.
