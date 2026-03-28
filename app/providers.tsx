@@ -3,6 +3,7 @@
 import { useCallback, useEffect, type PropsWithChildren } from "react";
 import { ConvexProviderWithAuthKit } from "@convex-dev/workos";
 import {
+  AuthKitProvider,
   useAccessToken,
   useAuth,
 } from "@workos-inc/authkit-nextjs/components";
@@ -52,8 +53,10 @@ export function Providers({ children }: PropsWithChildren) {
   }
 
   return (
-    <ConvexProviderWithAuthKit client={convex} useAuth={useAuthKitForConvex}>
-      {children}
-    </ConvexProviderWithAuthKit>
+    <AuthKitProvider>
+      <ConvexProviderWithAuthKit client={convex} useAuth={useAuthKitForConvex}>
+        {children}
+      </ConvexProviderWithAuthKit>
+    </AuthKitProvider>
   );
 }
