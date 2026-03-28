@@ -29,4 +29,4 @@ jobs:
           WORKOS_CLIENT_ID: client_placeholder
           WORKOS_API_KEY: sk_test_placeholder
           WORKOS_COOKIE_PASSWORD: 0123456789abcdef0123456789abcdef
-          NEXT_PUBLIC_WORKOS_REDIRECT_URI: http://localhost:3000/api/auth/callback
+          NEXT_PUBLIC_WORKOS_REDIRECT_URI: http://localhost:3000/callback
