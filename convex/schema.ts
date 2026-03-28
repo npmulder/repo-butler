@@ -143,7 +143,11 @@ export default defineSchema({
     createdAt: v.float64(),
   })
     .index("by_repo", ["repoId", "snapshotedAt"])
-    .index("by_github_issue", ["repoId", "githubIssueNumber"])
+    .index("by_repo_and_github_issue_number_and_snapshoted_at", [
+      "repoId",
+      "githubIssueNumber",
+      "snapshotedAt",
+    ])
     .index("by_created", ["createdAt"]),
 
   runs: defineTable({

@@ -59,10 +59,11 @@ export const authKitEvent = internalMutation({
     }
 
     const now = Date.now();
+    const name = getName(args.data);
     const userDoc = {
       workosId,
       email,
-      ...(getName(args.data) !== undefined ? { name: getName(args.data) } : {}),
+      ...(name !== undefined ? { name } : {}),
       ...(typeof args.data.profilePictureUrl === "string"
         ? { avatarUrl: args.data.profilePictureUrl }
         : {}),

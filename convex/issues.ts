@@ -60,7 +60,7 @@ export const getByGithubIssue = query({
 
     return await ctx.db
       .query("issues")
-      .withIndex("by_github_issue", (q) =>
+      .withIndex("by_repo_and_github_issue_number_and_snapshoted_at", (q) =>
         q
           .eq("repoId", args.repoId)
           .eq("githubIssueNumber", args.githubIssueNumber),
