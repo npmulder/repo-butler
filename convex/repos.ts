@@ -24,14 +24,12 @@ export const getByFullName = query({
     const user = await requireCurrentUser(ctx);
     const repo = await ctx.db
       .query("repos")
-      .withIndex("by_full_name", (q) => q.eq("fullName", args.fullName))
+      .withIndex("by_user_and_full_name", (q) =>
+        q.eq("userId", user._id).eq("fullName", args.fullName),
+      )
       .unique();
 
-    if (!repo || repo.userId !== user._id) {
-      return null;
-    }
-
-    return repo;
+    return repo ?? null;
   },
 });
 
@@ -47,9 +45,13 @@ export const create = mutation({
     const { user } = await requireInstallationAccess(ctx, args.installationId);
     const now = Date.now();
     const repoId = await ctx.db.insert("repos", {
-      ...args,
       userId: user._id,
+      installationId: args.installationId,
+      owner: args.owner,
+      name: args.name,
       fullName: `${args.owner}/${args.name}`,
+      defaultBranch: args.defaultBranch,
+      ...(args.language !== undefined ? { language: args.language } : {}),
       isActive: true,
       createdAt: now,
       updatedAt: now,

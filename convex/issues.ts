@@ -35,7 +35,18 @@ export const snapshot = internalMutation({
     const now = Date.now();
 
     return await ctx.db.insert("issues", {
-      ...args,
+      repoId: args.repoId,
+      githubIssueNumber: args.githubIssueNumber,
+      githubIssueUrl: args.githubIssueUrl,
+      title: args.title,
+      authorLogin: args.authorLogin,
+      labels: args.labels,
+      state: args.state,
+      ...(args.body !== undefined ? { body: args.body } : {}),
+      ...(args.commentsSnapshot !== undefined
+        ? { commentsSnapshot: args.commentsSnapshot }
+        : {}),
+      ...(args.linkedPRs !== undefined ? { linkedPRs: args.linkedPRs } : {}),
       snapshottedAt: now,
       createdAt: now,
     });

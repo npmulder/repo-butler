@@ -54,6 +54,7 @@ export const create = internalMutation({
     const now = Date.now();
     const runDocId = await ctx.db.insert("runs", {
       runId: "pending",
+      userId: repo.userId,
       issueId: args.issueId,
       repoId: args.repoId,
       triggeredBy: args.triggeredBy,
@@ -115,25 +116,12 @@ export const listRecent = query({
     const user = await requireCurrentUser(ctx);
     const rawLimit = Number(args.limit ?? BigInt(25));
     const safeLimit = Math.min(Math.max(rawLimit, 1), 100);
-    const repos = await ctx.db
-      .query("repos")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .collect();
 
-    const runs = await Promise.all(
-      repos.map((repo) =>
-        ctx.db
-          .query("runs")
-          .withIndex("by_repo", (q) => q.eq("repoId", repo._id))
-          .order("desc")
-          .take(safeLimit),
-      ),
-    );
-
-    return runs
-      .flat()
-      .sort((left, right) => right.startedAt - left.startedAt)
-      .slice(0, safeLimit);
+    return await ctx.db
+      .query("runs")
+      .withIndex("by_user_and_started_at", (q) => q.eq("userId", user._id))
+      .order("desc")
+      .take(safeLimit);
   },
 });
 
@@ -153,6 +141,7 @@ export const listByRepo = query({
 export const getByRunId = query({
   args: { runId: v.string() },
   handler: async (ctx, args) => {
+    const user = await requireCurrentUser(ctx);
     const run = await ctx.db
       .query("runs")
       .withIndex("by_run_id", (q) => q.eq("runId", args.runId))
@@ -162,7 +151,6 @@ export const getByRunId = query({
       return null;
     }
 
-    const user = await requireCurrentUser(ctx);
     const repo = await ctx.db.get(run.repoId);
 
     if (!repo || repo.userId !== user._id) {

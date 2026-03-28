@@ -58,25 +58,28 @@ export const authKitEvent = internalMutation({
       return null;
     }
 
-    const patch = {
+    const now = Date.now();
+    const userDoc = {
+      workosId,
       email,
-      name: getName(args.data),
-      avatarUrl:
-        typeof args.data.profilePictureUrl === "string"
-          ? args.data.profilePictureUrl
-          : undefined,
-      updatedAt: Date.now(),
+      ...(getName(args.data) !== undefined ? { name: getName(args.data) } : {}),
+      ...(typeof args.data.profilePictureUrl === "string"
+        ? { avatarUrl: args.data.profilePictureUrl }
+        : {}),
+      updatedAt: now,
     };
 
     if (existing) {
-      await ctx.db.patch(existing._id, patch);
+      await ctx.db.replace(existing._id, {
+        ...userDoc,
+        createdAt: existing.createdAt,
+      });
       return null;
     }
 
     await ctx.db.insert("users", {
-      workosId,
-      createdAt: patch.updatedAt,
-      ...patch,
+      ...userDoc,
+      createdAt: now,
     });
 
     return null;

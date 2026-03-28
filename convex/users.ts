@@ -15,22 +15,26 @@ export const upsertFromWorkOS = internalMutation({
       .unique();
 
     const now = Date.now();
+    const userDoc = {
+      workosId: args.workosId,
+      email: args.email,
+      ...(args.name !== undefined ? { name: args.name } : {}),
+      ...(args.avatarUrl !== undefined ? { avatarUrl: args.avatarUrl } : {}),
+      updatedAt: now,
+    };
 
     if (existing) {
-      await ctx.db.patch(existing._id, {
-        email: args.email,
-        name: args.name,
-        avatarUrl: args.avatarUrl,
-        updatedAt: now,
+      await ctx.db.replace(existing._id, {
+        ...userDoc,
+        createdAt: existing.createdAt,
       });
 
       return existing._id;
     }
 
     return await ctx.db.insert("users", {
-      ...args,
+      ...userDoc,
       createdAt: now,
-      updatedAt: now,
     });
   },
 });

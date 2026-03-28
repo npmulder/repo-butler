@@ -102,6 +102,7 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_full_name", ["fullName"])
+    .index("by_user_and_full_name", ["userId", "fullName"])
     .index("by_installation", ["installationId"])
     .index("by_active", ["isActive", "updatedAt"]),
 
@@ -147,6 +148,7 @@ export default defineSchema({
 
   runs: defineTable({
     runId: v.string(),
+    userId: v.optional(v.id("users")),
     issueId: v.id("issues"),
     repoId: v.id("repos"),
     triggeredBy: v.union(
@@ -172,6 +174,7 @@ export default defineSchema({
     errorMessage: v.optional(v.string()),
   })
     .index("by_run_id", ["runId"])
+    .index("by_user_and_started_at", ["userId", "startedAt"])
     .index("by_issue", ["issueId", "startedAt"])
     .index("by_repo", ["repoId", "startedAt"])
     .index("by_status", ["status", "startedAt"])
