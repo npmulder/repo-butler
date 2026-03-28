@@ -24,6 +24,7 @@ export type IssueSnapshotInput<RepoId> = {
   title: string;
   body?: string;
   authorLogin: string;
+  githubCreatedAt?: string;
   labels: string[];
   state: "open" | "closed";
 };
@@ -80,7 +81,7 @@ export interface WebhookStore<
     input: IssueSnapshotInput<RepoId>,
   ): Promise<WebhookIssue<IssueId, RepoId>>;
   createRun(input: CreateRunInput<RepoId, IssueId, UserId>): Promise<RunId>;
-  scheduleTriage(runId: RunId): Promise<void>;
+  scheduleTriage(runId: RunId, issueId: IssueId): Promise<void>;
   getInstallationByInstallationId(
     installationId: bigint,
   ): Promise<WebhookInstallation<InstallationId> | null>;
@@ -172,6 +173,7 @@ function extractIssueSnapshotInput<RepoId>(
   const githubIssueUrl = readString(issue.html_url);
   const title = readString(issue.title);
   const authorLogin = readString(readRecord(issue, "user")?.login);
+  const githubCreatedAt = readString(issue.created_at);
   const state = readString(issue.state);
 
   if (
@@ -205,6 +207,7 @@ function extractIssueSnapshotInput<RepoId>(
     title,
     ...(body !== undefined ? { body } : {}),
     authorLogin,
+    ...(githubCreatedAt ? { githubCreatedAt } : {}),
     labels,
     state,
   };
@@ -270,7 +273,7 @@ async function createRunForIssue<RepoId, IssueId, RunId, InstallationId, UserId>
     startedAt,
   });
 
-  await store.scheduleTriage(runId);
+  await store.scheduleTriage(runId, issue.id);
 }
 
 export async function processWebhookDelivery<

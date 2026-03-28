@@ -73,6 +73,9 @@ function createWebhookStore(
         title: input.title,
         ...(input.body !== undefined ? { body: input.body } : {}),
         authorLogin: input.authorLogin,
+        ...(input.githubCreatedAt !== undefined
+          ? { githubCreatedAt: input.githubCreatedAt }
+          : {}),
         labels: input.labels,
         state: input.state,
         snapshotedAt: now,
@@ -98,9 +101,10 @@ function createWebhookStore(
         startedAt,
       });
     },
-    scheduleTriage: async (runId) => {
+    scheduleTriage: async (runId, issueId) => {
       await ctx.scheduler.runAfter(0, internal.pipeline.runTriage, {
-        runDocId: runId,
+        runId,
+        issueId,
       });
     },
     getInstallationByInstallationId: async (installationId) => {

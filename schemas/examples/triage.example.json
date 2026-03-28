@@ -32,5 +32,6 @@
       "package_manager": "pnpm"
     }
   },
-  "repro_eligible": true
+  "repro_eligible": true,
+  "summary": "The issue describes a schema-validation bug with a clear failure mode and a reproducible assertion signal. It should be treated as triage-eligible because the failure can be exercised in an automated test environment."
 }

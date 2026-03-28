@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, query } from "./_generated/server";
 import { requireCurrentUser, requireRepoAccess } from "./lib/auth";
 
 const triggeredByValidator = v.union(
@@ -103,6 +103,13 @@ export const updateStatus = internalMutation({
     }
 
     await ctx.db.patch(args.runId, patch);
+  },
+});
+
+export const getById = internalQuery({
+  args: { runId: v.id("runs") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.runId);
   },
 });
 

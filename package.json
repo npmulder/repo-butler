@@ -14,6 +14,7 @@
     "convex:codegen": "convex codegen"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
     "@convex-dev/workos": "0.0.1",
     "@convex-dev/workos-authkit": "0.1.6",
     "@workos-inc/authkit-nextjs": "2.4.6",
@@ -42,6 +43,7 @@
     "prettier-plugin-tailwindcss": "^0.7.2",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.2"
   }
 }

@@ -37,4 +37,5 @@ export interface TriageResult {
     };
   };
   repro_eligible: boolean;
+  summary: string;
 }

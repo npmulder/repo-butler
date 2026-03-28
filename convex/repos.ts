@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import {
   requireCurrentUser,
   requireInstallationAccess,
@@ -54,6 +54,13 @@ export const getByFullName = query({
       .unique();
 
     return repo ?? null;
+  },
+});
+
+export const getById = internalQuery({
+  args: { repoId: v.id("repos") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.repoId);
   },
 });
 

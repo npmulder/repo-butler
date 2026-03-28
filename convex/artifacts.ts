@@ -2,35 +2,74 @@ import { v } from "convex/values";
 
 import type { Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { requireCurrentUser, requireLoadedRunAccess, requireRunAccess } from "./lib/auth";
 
-const triageSchemaVersionValidator = v.literal("rb.triage.v1");
 const reproContractSchemaVersionValidator = v.literal("rb.repro_contract.v1");
 const reproPlanSchemaVersionValidator = v.literal("rb.repro_plan.v1");
 const reproRunSchemaVersionValidator = v.literal("rb.repro_run.v1");
 const verificationSchemaVersionValidator = v.literal("rb.verification.v1");
-
-const classificationValidator = v.object({
-  type: v.union(
-    v.literal("bug"),
-    v.literal("docs"),
-    v.literal("question"),
-    v.literal("feature"),
-    v.literal("build"),
-    v.literal("test"),
-  ),
-  area: v.optional(v.array(v.string())),
-  severity: v.optional(
-    v.union(
-      v.literal("low"),
-      v.literal("medium"),
-      v.literal("high"),
-      v.literal("critical"),
+const triageTokensUsedValidator = v.object({
+  input: v.number(),
+  output: v.number(),
+});
+const triageClassificationTypeValidator = v.union(
+  v.literal("bug"),
+  v.literal("docs"),
+  v.literal("question"),
+  v.literal("feature"),
+  v.literal("build"),
+  v.literal("test"),
+);
+const triageSeverityValidator = v.union(
+  v.literal("low"),
+  v.literal("medium"),
+  v.literal("high"),
+  v.literal("critical"),
+);
+const triageFailureSignalKindValidator = v.union(
+  v.literal("exception"),
+  v.literal("assertion"),
+  v.literal("nonzero_exit"),
+  v.literal("snapshot_diff"),
+  v.literal("timeout"),
+);
+const triageArtifactValidator = v.object({
+  schema_version: v.literal("rb.triage.v1"),
+  run_id: v.string(),
+  repo: v.object({
+    owner: v.string(),
+    name: v.string(),
+    default_branch: v.string(),
+  }),
+  issue: v.object({
+    number: v.number(),
+    title: v.string(),
+    url: v.string(),
+  }),
+  classification: v.object({
+    type: triageClassificationTypeValidator,
+    area: v.optional(v.array(v.string())),
+    severity: v.optional(triageSeverityValidator),
+    labels_suggested: v.array(v.string()),
+    confidence: v.number(),
+  }),
+  repro_hypothesis: v.object({
+    minimal_steps_guess: v.optional(v.array(v.string())),
+    expected_failure_signal: v.object({
+      kind: triageFailureSignalKindValidator,
+      match_any: v.optional(v.array(v.string())),
+    }),
+    environment_assumptions: v.optional(
+      v.object({
+        os: v.optional(v.string()),
+        language: v.optional(v.string()),
+        runtime: v.optional(v.string()),
+      }),
     ),
-  ),
-  labelsSuggested: v.array(v.string()),
-  confidence: v.float64(),
+  }),
+  repro_eligible: v.boolean(),
+  summary: v.string(),
 });
 
 const failureSignalValidator = v.object({
@@ -42,12 +81,6 @@ const failureSignalValidator = v.object({
     v.literal("timeout"),
   ),
   matchAny: v.optional(v.array(v.string())),
-});
-
-const reproHypothesisValidator = v.object({
-  minimalStepsGuess: v.optional(v.array(v.string())),
-  expectedFailureSignal: failureSignalValidator,
-  environmentAssumptions: v.optional(v.any()),
 });
 
 const acceptanceValidator = v.object({
@@ -172,34 +205,97 @@ async function findSingleRunIdForLogStorage(
   return runIds.values().next().value ?? null;
 }
 
-export const storeTriage = mutation({
+export const storeTriage = internalMutation({
   args: {
     runId: v.id("runs"),
-    schemaVersion: triageSchemaVersionValidator,
-    classification: classificationValidator,
-    reproHypothesis: reproHypothesisValidator,
-    reproEligible: v.boolean(),
-    rawResponse: v.optional(v.string()),
+    artifact: triageArtifactValidator,
+    tokensUsed: triageTokensUsedValidator,
   },
   handler: async (ctx, args) => {
-    await requireRunAccess(ctx, args.runId);
+    const run = await ctx.db.get(args.runId);
+
+    if (!run) {
+      throw new Error("Run not found");
+    }
+    const artifact = args.artifact;
+
+    if (artifact.classification.labels_suggested.length === 0) {
+      throw new Error(
+        "Invalid triage artifact: classification.labels_suggested must not be empty",
+      );
+    }
+
+    if (
+      artifact.classification.confidence < 0 ||
+      artifact.classification.confidence > 1
+    ) {
+      throw new Error(
+        "Invalid triage artifact: classification.confidence must be between 0 and 1",
+      );
+    }
+
+    if (artifact.summary.trim().length === 0) {
+      throw new Error("Invalid triage artifact: summary must not be empty");
+    }
 
     const existing = await ctx.db
       .query("triageResults")
       .withIndex("by_run", (q) => q.eq("runId", args.runId))
       .unique();
     const createdAt = existing?.createdAt ?? Date.now();
+    const legacyClassification = {
+      type: artifact.classification.type,
+      ...(artifact.classification.area !== undefined
+        ? { area: artifact.classification.area }
+        : {}),
+      ...(artifact.classification.severity !== undefined
+        ? { severity: artifact.classification.severity }
+        : {}),
+      labelsSuggested: artifact.classification.labels_suggested,
+      confidence: artifact.classification.confidence,
+    };
+    const legacyReproHypothesis = {
+      ...(artifact.repro_hypothesis.minimal_steps_guess !== undefined
+        ? { minimalStepsGuess: artifact.repro_hypothesis.minimal_steps_guess }
+        : {}),
+      expectedFailureSignal: {
+        kind: artifact.repro_hypothesis.expected_failure_signal.kind,
+        ...(artifact.repro_hypothesis.expected_failure_signal.match_any !== undefined
+          ? {
+              matchAny:
+                artifact.repro_hypothesis.expected_failure_signal.match_any,
+            }
+          : {}),
+      },
+      ...(artifact.repro_hypothesis.environment_assumptions !== undefined
+        ? {
+            environmentAssumptions:
+              artifact.repro_hypothesis.environment_assumptions,
+          }
+        : {}),
+    };
     const doc = {
       runId: args.runId,
-      schemaVersion: args.schemaVersion,
-      classification: args.classification,
-      reproHypothesis: args.reproHypothesis,
-      reproEligible: args.reproEligible,
-      ...(args.rawResponse !== undefined ? { rawResponse: args.rawResponse } : {}),
+      ...(run.userId !== undefined ? { userId: run.userId } : {}),
+      repoId: run.repoId,
+      issueId: run.issueId,
+      artifact,
+      classificationType: artifact.classification.type,
+      ...(artifact.classification.severity !== undefined
+        ? { severity: artifact.classification.severity }
+        : {}),
+      confidence: artifact.classification.confidence,
+      reproEligible: artifact.repro_eligible,
+      summary: artifact.summary,
+      tokensUsed: args.tokensUsed,
+      schemaVersion: artifact.schema_version,
+      classification: legacyClassification,
+      reproHypothesis: legacyReproHypothesis,
+      ...(existing?.rawResponse !== undefined
+        ? { rawResponse: existing.rawResponse }
+        : {}),
       createdAt,
     };
-
-    await ctx.db.patch(args.runId, { status: "triaging" });
 
     if (existing) {
       await ctx.db.replace(existing._id, doc);

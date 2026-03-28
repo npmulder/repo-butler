@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, query } from "./_generated/server";
 import { requireRepoAccess } from "./lib/auth";
 
 const issueStateValidator = v.union(v.literal("open"), v.literal("closed"));
@@ -20,6 +20,7 @@ export const snapshot = internalMutation({
     title: v.string(),
     body: v.optional(v.string()),
     authorLogin: v.string(),
+    githubCreatedAt: v.optional(v.string()),
     labels: v.array(v.string()),
     state: issueStateValidator,
     commentsSnapshot: v.optional(commentsSnapshotValidator),
@@ -40,6 +41,9 @@ export const snapshot = internalMutation({
       githubIssueUrl: args.githubIssueUrl,
       title: args.title,
       authorLogin: args.authorLogin,
+      ...(args.githubCreatedAt !== undefined
+        ? { githubCreatedAt: args.githubCreatedAt }
+        : {}),
       labels: args.labels,
       state: args.state,
       ...(args.body !== undefined ? { body: args.body } : {}),
@@ -67,6 +71,13 @@ export const getByGithubIssue = query({
       )
       .order("desc")
       .first();
+  },
+});
+
+export const getById = internalQuery({
+  args: { issueId: v.id("issues") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.issueId);
   },
 });
 
