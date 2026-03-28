@@ -2,7 +2,11 @@
 
 import { useCallback, type PropsWithChildren } from "react";
 import { ConvexProviderWithAuthKit } from "@convex-dev/workos";
-import { AuthKitProvider, useAccessToken, useAuth } from "@workos-inc/authkit-nextjs/components";
+import {
+  AuthKitProvider,
+  useAccessToken,
+  useAuth,
+} from "@workos-inc/authkit-nextjs/components";
 import { ConvexReactClient } from "convex/react";
 
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;

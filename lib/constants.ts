@@ -1,7 +1,15 @@
 export const APP_META = {
   name: "Repo Butler",
-  description: "AI-powered issue triage and automated bug reproduction for open-source maintainers",
+  description:
+    "AI-powered issue triage and automated bug reproduction for open-source maintainers",
 };
+
+export const HOME_NAV_ITEMS = [
+  { label: "Demo", href: "#demo" },
+  { label: "Features", href: "#features" },
+  { label: "How it works", href: "#how-it-works" },
+  { label: "Who it's for", href: "#operators" },
+] as const;
 
 export const DASHBOARD_NAV_ITEMS = [
   {
@@ -28,84 +36,162 @@ export const DASHBOARD_NAV_ITEMS = [
 
 export const HERO_TERMINAL_LINES = [
   {
-    label: "triager",
-    tone: "accent",
-    content:
-      "severity=high · category=build-regression · labels=needs-repro, flaky-risk · hypothesis=workspace cache invalidation after rebase",
+    kind: "command",
+    content: "repo-butler triage owner/repo#142",
+    note: "planner",
   },
   {
-    label: "reproducer",
+    kind: "output",
+    label: "classified",
+    tone: "accent",
+    content: "bug · severity: high · labels: needs-repro, flaky-risk",
+  },
+  {
+    kind: "output",
+    label: "hypothesis",
     tone: "muted",
     content:
-      "sandbox bootstrap: devcontainer unavailable → Dockerfile detected → deterministic script synthesized from runtime feedback",
+      "race condition in the connection pool after the rebase invalidates cache state",
   },
   {
-    label: "verifier",
+    kind: "output",
+    label: "reproduced",
     tone: "success",
     content:
-      "clean-room replay: 3 reruns passed with 0% flake · no network access · no secrets surfaced · artifact posted to GitHub",
+      "3/3 deterministic reruns with a failing test attached to the issue thread",
+  },
+] as const;
+
+export const DEMO_PIPELINE_LINES = [
+  {
+    kind: "command",
+    content: "repo-butler run owner/repo#142",
+    note: "planner → generator → evaluator",
+  },
+  {
+    kind: "output",
+    label: "context",
+    tone: "muted",
+    content:
+      "GitHub issue, recent commits, and workspace bootstrap hints collected from the repository.",
+  },
+  {
+    kind: "output",
+    label: "triage",
+    tone: "accent",
+    content:
+      "Classified as a high-severity regression with maintainers notified before sandbox reproduction starts.",
+  },
+  {
+    kind: "output",
+    label: "reproduce",
+    tone: "warning",
+    content:
+      "Devcontainer failed, Dockerfile fallback succeeded, and the generator synthesized a failing test from stderr feedback.",
+  },
+  {
+    kind: "output",
+    label: "verify",
+    tone: "success",
+    content:
+      "Three clean reruns passed with zero flake tolerance, no network access, and no secrets surfaced in the output.",
+  },
+  {
+    kind: "output",
+    label: "posted",
+    tone: "muted",
+    content:
+      "Issue updated with a failing test, execution notes, and a confidence summary for the maintainer.",
   },
 ] as const;
 
 export const METRICS = [
-  { value: "3x", label: "reruns required before verification passes" },
-  { value: "0%", label: "flake tolerance for posted reproduction artifacts" },
-  { value: "<10m", label: "from vague issue to actionable maintainer evidence" },
+  { value: "<10m", label: "issue report to first deterministic artifact" },
+  { value: "3/3", label: "clean reruns required before verification passes" },
+  {
+    value: "0 secrets",
+    label: "credential leakage tolerated in posted evidence",
+  },
 ] as const;
 
 export const FEATURE_PILLARS = [
   {
     slug: "triage",
-    kicker: "Planner",
     title: "Triage",
     description:
-      "Classify incoming issues with AI-generated severity, category, label suggestions, and a concrete reproduction hypothesis before the expensive work begins.",
+      "Turn vague reports into structured maintainer context before the expensive work begins.",
     bullets: [
-      "Structured issue artifacts for maintainers and automation",
-      "Approval gates before sandbox reproduction proceeds",
-      "Consistent taxonomy for bugs, regressions, and unsupported reports",
+      "Severity, labels, and ownership hints stay visible on the issue",
+      "Approval gates control when sandbox work can begin",
+      "Hypotheses are explicit instead of buried in logs",
     ],
   },
   {
     slug: "reproduce",
-    kicker: "Generator",
     title: "Reproduce",
     description:
-      "Launch sandboxed reproduction runs that attempt environment setup automatically, learn from runtime feedback, and produce failing tests or deterministic scripts.",
+      "Launch the most likely environment, learn from runtime feedback, and keep the artifact readable.",
     bullets: [
-      "Environment strategy from devcontainer to Dockerfile to bootstrap scripts",
-      "Iterative refinement loop driven by stderr, exit codes, and test output",
-      "Artifacts optimized for maintainers to run locally without guesswork",
+      "Fallbacks move from devcontainer to Dockerfile to bootstrap scripts",
+      "Every retry explains what changed and why it changed",
+      "Artifacts are ready for a maintainer to run locally",
     ],
   },
   {
     slug: "verify",
-    kicker: "Evaluator",
     title: "Verify",
     description:
-      "Re-run the candidate artifact in a clean sandbox, enforce determinism checks, validate policy compliance, and report evidence back to the GitHub issue.",
+      "Re-run the candidate artifact in a clean sandbox and only post what survives verification.",
     bullets: [
       "Three reruns with zero tolerated flake",
-      "No-network and no-secrets policy checks before posting",
-      "GitHub-ready summaries with logs, scripts, and confidence signals",
+      "Network and secret checks gate anything that gets posted",
+      "GitHub-ready summaries include confidence, logs, and the failing test",
     ],
   },
 ] as const;
 
 export const HOW_IT_WORKS_STEPS = [
   {
-    title: "Install the GitHub App on your repo",
+    title: "Install the GitHub App",
     description:
-      "Repo Butler connects to selected repositories, captures issue context, and prepares each workspace for sandbox-safe execution.",
+      "Connect Repo Butler to the repositories where maintainers want structured triage and reproduction help.",
   },
   {
-    title: "Issues are automatically triaged and queued for reproduction",
+    title: "Approve the reproduction path",
     description:
-      "The planner classifies severity, suggests labels, and routes approved issues into the reproducer with an initial hypothesis.",
+      "The planner classifies the report and keeps human approval in the loop before risky sandbox work starts.",
   },
   {
-    title: "Verified reproduction artifacts are posted back to the issue",
+    title: "Generate the artifact",
     description:
-      "The evaluator confirms determinism, checks policy compliance, and sends maintainers concrete evidence instead of vague status updates.",
+      "The generator bootstraps the workspace, reacts to stderr and test output, and converges on a failing artifact.",
+  },
+  {
+    title: "Post verified evidence",
+    description:
+      "The evaluator reruns the artifact, enforces policy checks, and sends only deterministic evidence back to GitHub.",
+  },
+] as const;
+
+export const WHO_ITS_FOR = [
+  {
+    title: "Open-source maintainers",
+    description:
+      "Use Repo Butler to turn high-volume issue queues into auditable repro attempts without disappearing into manual setup loops.",
+    bullets: [
+      "Keep contributor conversations grounded in concrete evidence",
+      "See severity, confidence, and reproduction status at a glance",
+      "Require approval before expensive or sensitive workflows run",
+    ],
+  },
+  {
+    title: "Engineering teams",
+    description:
+      "Use the same pipeline for internal bug intake so on-call engineers stop translating vague reports into ad hoc debugging sessions.",
+    bullets: [
+      "Standardize how bugs move from report to failing artifact",
+      "Share reproducible evidence across product, QA, and infra",
+      "Preserve a readable audit trail when automation takes action",
+    ],
   },
 ] as const;
