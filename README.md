@@ -25,7 +25,8 @@ pnpm install
 cp .env.example .env.local
 ```
 
-3. Select the shared Convex deployment and populate the generated Convex env vars:
+3. Select the shared Convex deployment (`dev:handsome-raven-359`) and populate
+the generated Convex env vars:
 
 ```bash
 pnpm exec convex dev --once --configure existing
@@ -59,6 +60,8 @@ The app runs at `http://localhost:3000`.
 ## Environment variables
 
 - `NEXT_PUBLIC_CONVEX_URL`: Convex deployment URL used by the React client.
+- `NEXT_PUBLIC_CONVEX_SITE_URL`: Convex HTTP actions URL written by Convex when
+  you select a deployment.
 - `CONVEX_DEPLOYMENT`: Convex deployment ref used by CLI commands such as
   `pnpm run convex:codegen`. Mirror this value into the GitHub Actions
   `CONVEX_DEPLOYMENT` secret for non-interactive CI/CD configuration.
