@@ -16,7 +16,9 @@ artifacts exchanged by the Triager -> Reproducer -> Verifier pipeline.
 
 - Runtime schema identifiers use the format `rb.<type>.v<N>`, for example
   `rb.triage.v1`.
-- Schema files are named `<type>.v<N>.json`.
+- Schema files are named `<type>.v<N>.json`; multiword filenames use kebab-case
+  (`repro-contract.v1.json`) while the corresponding `schema_version` keeps the
+  runtime artifact identifier (`rb.repro_contract.v1`).
 - Breaking schema changes create a new versioned file and keep prior versions in
   place for backwards-compatible readers.
 - Consumers detect the correct validator at read time via each artifact's

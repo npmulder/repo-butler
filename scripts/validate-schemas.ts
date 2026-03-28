@@ -77,14 +77,19 @@ async function main(): Promise<void> {
     console.log(`Validated example: ${file}`);
   }
 
-  const triage = clone(examples.get("rb.triage.v1"));
-  const reproPlan = clone(examples.get("rb.repro_plan.v1"));
-  const reproRun = clone(examples.get("rb.repro_run.v1"));
-  const verification = clone(examples.get("rb.verification.v1"));
+  const triageExample = examples.get("rb.triage.v1");
+  const reproPlanExample = examples.get("rb.repro_plan.v1");
+  const reproRunExample = examples.get("rb.repro_run.v1");
+  const verificationExample = examples.get("rb.verification.v1");
 
-  if (!triage || !reproPlan || !reproRun || !verification) {
+  if (!triageExample || !reproPlanExample || !reproRunExample || !verificationExample) {
     throw new Error("Expected all example fixtures to be loaded before negative checks.");
   }
+
+  const triage = clone(triageExample);
+  const reproPlan = clone(reproPlanExample);
+  const reproRun = clone(reproRunExample);
+  const verification = clone(verificationExample);
 
   delete triage.run_id;
   expectInvalid("triage missing run_id", "rb.triage.v1", triage, "run_id");

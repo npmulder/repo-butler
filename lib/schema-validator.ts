@@ -26,12 +26,19 @@ export const SCHEMA_VERSIONS = Object.freeze(
 export type SchemaVersion = (typeof SCHEMA_VERSIONS)[number];
 
 function formatError(error: ErrorObject): string {
-  const missingProperty =
+  const missingPropertyName =
     error.keyword === "required" && typeof error.params.missingProperty === "string"
-      ? `/${error.params.missingProperty}`
+      ? error.params.missingProperty
       : "";
 
-  return `${error.instancePath || "/"}${missingProperty}: ${error.message}`;
+  const path =
+    missingPropertyName !== ""
+      ? error.instancePath
+        ? `${error.instancePath}/${missingPropertyName}`
+        : `/${missingPropertyName}`
+      : error.instancePath || "/";
+
+  return `${path}: ${error.message}`;
 }
 
 export function isSchemaVersion(value: unknown): value is SchemaVersion {
