@@ -263,7 +263,9 @@ export default defineSchema({
     logStorageId: v.optional(v.id("_storage")),
     durationMs: v.int64(),
     createdAt: v.float64(),
-  }).index("by_run", ["runId", "iteration"]),
+  })
+    .index("by_run", ["runId", "iteration"])
+    .index("by_log_storage_id", ["logStorageId"]),
 
   verifications: defineTable({
     runId: v.id("runs"),
@@ -287,7 +289,9 @@ export default defineSchema({
     notes: v.optional(v.string()),
     logStorageId: v.optional(v.id("_storage")),
     createdAt: v.float64(),
-  }).index("by_run", ["runId"]),
+  })
+    .index("by_run", ["runId"])
+    .index("by_log_storage_id", ["logStorageId"]),
 
   webhookDeliveries: defineTable({
     deliveryId: v.string(),
