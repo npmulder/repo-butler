@@ -13,6 +13,9 @@ const runStatusValidator = v.union(
   v.literal("pending"),
   v.literal("triaging"),
   v.literal("awaiting_approval"),
+  v.literal("approved"),
+  v.literal("rejected"),
+  v.literal("needs_info"),
   v.literal("reproducing"),
   v.literal("verifying"),
   v.literal("completed"),
@@ -75,6 +78,8 @@ export const updateStatus = internalMutation({
     status: runStatusValidator,
     verdict: v.optional(verdictValidator),
     errorMessage: v.optional(v.string()),
+    approvedBy: v.optional(v.string()),
+    approvedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
@@ -88,6 +93,8 @@ export const updateStatus = internalMutation({
       completedAt?: number;
       verdict?: typeof args.verdict;
       errorMessage?: string;
+      approvedBy?: string;
+      approvedAt?: number;
     } = { status: args.status };
 
     if (args.verdict) {
@@ -98,7 +105,19 @@ export const updateStatus = internalMutation({
       patch.errorMessage = args.errorMessage;
     }
 
-    if (["completed", "failed", "cancelled"].includes(args.status)) {
+    if (args.approvedBy) {
+      patch.approvedBy = args.approvedBy;
+    }
+
+    if (args.approvedAt) {
+      patch.approvedAt = args.approvedAt;
+    }
+
+    if (
+      ["completed", "failed", "cancelled", "rejected", "needs_info"].includes(
+        args.status,
+      )
+    ) {
       patch.completedAt = Date.now();
     }
 

@@ -219,10 +219,38 @@ export const runTriage = internalAction({
         },
       });
 
-      await ctx.runMutation(internal.runs.updateStatus, {
-        runId: args.runId,
-        status: toolOutput.repro_eligible ? "awaiting_approval" : "completed",
-      });
+      if (toolOutput.repro_eligible) {
+        const approval = await ctx.runQuery(internal.approvalGate.checkApproval, {
+          repoId: issue.repoId,
+          runId: args.runId,
+          triageConfidence: toolOutput.classification.confidence,
+          reproEligible: true,
+        });
+
+        if (approval.approved) {
+          const approvedAt = Date.now();
+
+          await ctx.runMutation(internal.runs.updateStatus, {
+            runId: args.runId,
+            status: "approved",
+            approvedBy: "system:auto",
+            approvedAt,
+            errorMessage: approval.reason,
+          });
+          // Reproduction scheduling lands in CV-124.
+        } else {
+          await ctx.runMutation(internal.runs.updateStatus, {
+            runId: args.runId,
+            status: "awaiting_approval",
+            errorMessage: approval.reason,
+          });
+        }
+      } else {
+        await ctx.runMutation(internal.runs.updateStatus, {
+          runId: args.runId,
+          status: "completed",
+        });
+      }
     } catch (error) {
       const errorMessage = formatErrorMessage(error);
 

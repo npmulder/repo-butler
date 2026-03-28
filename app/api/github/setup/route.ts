@@ -9,6 +9,7 @@ import {
   githubInstallStateCookieName,
   validateGitHubInstallState,
 } from "@/lib/github";
+import { syncLabelsToRepo } from "@/lib/labels";
 
 function redirectToRepos(
   request: NextRequest,
@@ -120,6 +121,24 @@ async function listAccessibleRepos(installationId: number) {
   }
 }
 
+async function syncRepoButlerLabels(
+  installationId: number,
+  repos: Awaited<ReturnType<typeof listAccessibleRepos>>,
+) {
+  const octokit = await getInstallationOctokit(installationId);
+
+  for (const repo of repos) {
+    try {
+      await syncLabelsToRepo(octokit, repo.owner, repo.name);
+    } catch (error) {
+      console.warn(
+        `[github/setup] Failed to sync Repo Butler labels for ${repo.owner}/${repo.name}`,
+        error,
+      );
+    }
+  }
+}
+
 export const GET = async (request: NextRequest) => {
   const installationId = Number(
     request.nextUrl.searchParams.get("installation_id"),
@@ -197,6 +216,7 @@ export const GET = async (request: NextRequest) => {
       installationId: installationDocId,
       repos,
     });
+    await syncRepoButlerLabels(installationId, repos);
 
     return clearInstallStateCookie(
       redirectToRepos(request, {

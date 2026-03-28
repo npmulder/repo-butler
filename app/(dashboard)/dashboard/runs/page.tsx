@@ -15,6 +15,9 @@ const statusStyles = {
   pending: "border-white/10 bg-white/5 text-slate-100",
   triaging: "border-sky-400/20 bg-sky-400/10 text-sky-100",
   awaiting_approval: "border-amber-300/20 bg-amber-300/10 text-amber-100",
+  approved: "border-emerald-400/20 bg-emerald-400/10 text-emerald-100",
+  rejected: "border-rose-400/20 bg-rose-400/10 text-rose-100",
+  needs_info: "border-amber-300/20 bg-amber-300/10 text-amber-100",
   reproducing: "border-fuchsia-400/20 bg-fuchsia-400/10 text-fuchsia-100",
   verifying: "border-cyan-300/20 bg-cyan-300/10 text-cyan-100",
   completed: "border-emerald-400/20 bg-emerald-400/10 text-emerald-100",
@@ -33,11 +36,16 @@ const activeStatuses: readonly RunStatus[] = [
   "pending",
   "triaging",
   "awaiting_approval",
+  "approved",
   "reproducing",
   "verifying",
 ] as const;
 
-const failedStatuses: readonly RunStatus[] = ["failed", "cancelled"] as const;
+const failedStatuses: readonly RunStatus[] = [
+  "failed",
+  "cancelled",
+  "rejected",
+] as const;
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
@@ -54,7 +62,7 @@ function formatTimestamp(timestamp: number) {
 }
 
 export default function RunsPage() {
-  const runs = useQuery(api.runs.listRecent, {});
+  const runs = useQuery(api.runs.listRecent, {}) as Doc<"runs">[] | undefined;
 
   if (runs === undefined) {
     return (
@@ -114,7 +122,7 @@ export default function RunsPage() {
           </div>
           <p className="font-mono text-3xl font-semibold">{activeRuns}</p>
           <p className="text-sm leading-7 text-muted-foreground">
-            Pending, triaging, awaiting approval, reproducing, or verifying right now.
+            Pending, triaging, approved, awaiting approval, reproducing, or verifying right now.
           </p>
         </Panel>
 
@@ -129,7 +137,7 @@ export default function RunsPage() {
             {failedRuns}
           </p>
           <p className="text-sm leading-7 text-muted-foreground">
-            Reproduced runs versus failed or cancelled runs in the current window.
+            Reproduced runs versus failed, rejected, or cancelled runs in the current window.
           </p>
         </Panel>
       </section>
