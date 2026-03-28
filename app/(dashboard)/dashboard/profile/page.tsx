@@ -33,8 +33,8 @@ export default async function ProfilePage() {
         </p>
       </div>
 
-      <section className="grid gap-4 rounded-[28px] border border-border/80 bg-background/60 p-6 sm:grid-cols-2 sm:p-8">
-        <div className="sm:col-span-2">
+      <section className="rounded-[28px] border border-border/80 bg-background/60 p-6 sm:p-8">
+        <div>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             {user.profilePictureUrl ? (
               <img
@@ -53,26 +53,31 @@ export default async function ProfilePage() {
             </div>
           </div>
         </div>
-        <Field label="User ID" value={user.id} mono />
-        <Field label="First name" value={user.firstName ?? "Unavailable"} />
-        <Field label="Last name" value={user.lastName ?? "Unavailable"} />
-        <Field label="Email verified" value={user.emailVerified ? "Yes" : "No"} />
-        <Field
-          label="Organization"
-          value={organizationId ?? "No organization selected"}
-        />
-        <Field label="Role" value={role ?? "Authenticated operator"} />
-        <Field
-          label="Permissions"
-          value={permissions?.length ? permissions.join(", ") : "No permissions"}
-        />
-        <Field label="Created" value={formatDate(user.createdAt)} />
-        <Field label="Updated" value={formatDate(user.updatedAt)} />
-        <Field
-          className="sm:col-span-2"
-          label="Profile picture URL"
-          value={user.profilePictureUrl ?? "Unavailable"}
-        />
+        <dl className="mt-6 grid gap-4 sm:grid-cols-2">
+          <Field label="User ID" value={user.id} mono />
+          <Field label="First name" value={user.firstName ?? "Unavailable"} />
+          <Field label="Last name" value={user.lastName ?? "Unavailable"} />
+          <Field
+            label="Email verified"
+            value={user.emailVerified ? "Yes" : "No"}
+          />
+          <Field
+            label="Organization"
+            value={organizationId ?? "No organization selected"}
+          />
+          <Field label="Role" value={role ?? "Authenticated operator"} />
+          <Field
+            label="Permissions"
+            value={permissions?.length ? permissions.join(", ") : "No permissions"}
+          />
+          <Field label="Created" value={formatDate(user.createdAt)} />
+          <Field label="Updated" value={formatDate(user.updatedAt)} />
+          <Field
+            className="sm:col-span-2"
+            label="Profile picture URL"
+            value={user.profilePictureUrl ?? "Unavailable"}
+          />
+        </dl>
       </section>
     </div>
   );

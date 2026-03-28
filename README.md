@@ -53,7 +53,7 @@ The app runs at `http://localhost:3000`.
 - `WORKOS_CLIENT_ID`: WorkOS AuthKit client ID.
 - `WORKOS_API_KEY`: WorkOS API key. Keep this server-side only.
 - `WORKOS_COOKIE_PASSWORD`: 32+ character secret used for encrypted session cookies.
-- `NEXT_PUBLIC_WORKOS_REDIRECT_URI`: AuthKit callback URL. In local development this should match `http://localhost:3000/api/auth/callback`.
+- `NEXT_PUBLIC_WORKOS_REDIRECT_URI`: AuthKit callback URL. In local development this should match `http://localhost:3000/callback`.
 
 ## Validation commands
 

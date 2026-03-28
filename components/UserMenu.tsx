@@ -65,8 +65,8 @@ export function UserMenu({ organizationId, role, user }: UserMenuProps) {
   return (
     <div className="relative min-w-[18rem]" ref={menuRef}>
       <button
+        aria-controls={isOpen ? "user-menu-panel" : undefined}
         aria-expanded={isOpen}
-        aria-haspopup="menu"
         className="flex w-full items-center justify-between rounded-2xl border border-border/80 bg-background/70 px-4 py-3 text-left transition hover:border-accent/30 hover:bg-background"
         onClick={() => setIsOpen((open) => !open)}
         type="button"
@@ -95,8 +95,8 @@ export function UserMenu({ organizationId, role, user }: UserMenuProps) {
 
       {isOpen ? (
         <div
+          id="user-menu-panel"
           className="absolute right-0 z-10 mt-3 w-full rounded-[28px] border border-border/80 bg-panel/95 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.24)] backdrop-blur"
-          role="menu"
         >
           <div className="space-y-3 text-sm text-muted-foreground">
             <div className="flex items-start gap-3 rounded-2xl border border-border/80 bg-background/60 px-3 py-3">
@@ -124,7 +124,6 @@ export function UserMenu({ organizationId, role, user }: UserMenuProps) {
               className="flex items-center gap-3 rounded-2xl border border-border/80 bg-background/60 px-3 py-3 text-foreground transition hover:border-accent/30 hover:text-accent"
               href="/dashboard/profile"
               onClick={() => setIsOpen(false)}
-              role="menuitem"
             >
               <UserRound className="h-4 w-4 shrink-0" />
               <span>Profile</span>
@@ -140,7 +139,6 @@ export function UserMenu({ organizationId, role, user }: UserMenuProps) {
                   setBusy(false);
                 }
               }}
-              role="menuitem"
               type="button"
             >
               <LogOut className="h-4 w-4" />
