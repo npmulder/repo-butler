@@ -1,22 +1,51 @@
 import Anthropic from "@anthropic-ai/sdk";
 
+type LlmProvider = "anthropic" | "openrouter";
+
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
+
 let client: Anthropic | null = null;
 
-function getAnthropicApiKey(): string {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+function getRequiredEnvVar(name: "ANTHROPIC_API_KEY" | "OPENROUTER_API_KEY"): string {
+  const value = process.env[name];
 
-  if (!apiKey) {
-    throw new Error("ANTHROPIC_API_KEY is required");
+  if (!value) {
+    throw new Error(`${name} is required`);
   }
 
-  return apiKey;
+  return value;
+}
+
+function getLlmProvider(): LlmProvider {
+  const provider = process.env.LLM_PROVIDER?.trim().toLowerCase();
+
+  if (!provider || provider === "anthropic") {
+    return "anthropic";
+  }
+
+  if (provider === "openrouter") {
+    return "openrouter";
+  }
+
+  throw new Error(`Unsupported LLM_PROVIDER: ${process.env.LLM_PROVIDER}`);
+}
+
+function getAnthropicClientConfig(): { apiKey: string; baseURL?: string } {
+  if (getLlmProvider() === "openrouter") {
+    return {
+      apiKey: getRequiredEnvVar("OPENROUTER_API_KEY"),
+      baseURL: OPENROUTER_BASE_URL,
+    };
+  }
+
+  return {
+    apiKey: getRequiredEnvVar("ANTHROPIC_API_KEY"),
+  };
 }
 
 export function getAnthropicClient(): Anthropic {
   if (!client) {
-    client = new Anthropic({
-      apiKey: getAnthropicApiKey(),
-    });
+    client = new Anthropic(getAnthropicClientConfig());
   }
 
   return client;
