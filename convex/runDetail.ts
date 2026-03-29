@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { query, type QueryCtx } from "./_generated/server";
 import { requireRunAccess } from "./lib/auth";
 
@@ -10,12 +10,12 @@ async function listReproRuns(
   ctx: QueryCtx,
   runId: Id<"runs">,
 ) {
-  const reproRuns = [];
+  const reproRuns: Array<Doc<"reproRuns"> & { logUrl: string | null }> = [];
 
   for await (const reproRun of ctx.db
     .query("reproRuns")
     .withIndex("by_run", (indexQuery) => indexQuery.eq("runId", runId))
-    .order("asc")) {
+    .order("desc")) {
     reproRuns.push({
       ...reproRun,
       logUrl: reproRun.logStorageId
@@ -28,7 +28,7 @@ async function listReproRuns(
     }
   }
 
-  return reproRuns;
+  return reproRuns.reverse();
 }
 
 export const getFullRunDetail = query({

@@ -51,16 +51,22 @@ function formatDuration(milliseconds: number | null) {
   }
 
   const wholeMinutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.round(seconds % 60);
+  let displayMinutes = wholeMinutes;
+  let remainingSeconds = Math.round(seconds % 60);
 
-  if (wholeMinutes < 60) {
-    return remainingSeconds > 0
-      ? `${wholeMinutes}m ${remainingSeconds}s`
-      : `${wholeMinutes}m`;
+  if (remainingSeconds === 60) {
+    displayMinutes += 1;
+    remainingSeconds = 0;
   }
 
-  const wholeHours = Math.floor(wholeMinutes / 60);
-  const remainingMinutes = wholeMinutes % 60;
+  if (displayMinutes < 60) {
+    return remainingSeconds > 0
+      ? `${displayMinutes}m ${remainingSeconds}s`
+      : `${displayMinutes}m`;
+  }
+
+  const wholeHours = Math.floor(displayMinutes / 60);
+  const remainingMinutes = displayMinutes % 60;
 
   return remainingMinutes > 0
     ? `${wholeHours}h ${remainingMinutes}m`

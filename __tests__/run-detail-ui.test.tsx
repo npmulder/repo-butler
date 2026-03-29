@@ -21,6 +21,7 @@ import { StepLogViewer } from "../components/StepLogViewer";
 import type { Doc } from "../convex/_generated/dataModel";
 import {
   buildRunTimelineStages,
+  formatStepDuration,
   type ReproRunDetail,
   type RunDetailData,
   type VerificationDetail,
@@ -302,6 +303,11 @@ describe("run detail UI", () => {
     expect(failedStages.find((stage) => stage.key === "report")?.status).toBe(
       "failed",
     );
+  });
+
+  it("rounds carried minute and hour durations without emitting 60-second labels", () => {
+    expect(formatStepDuration(119_600)).toBe("2m");
+    expect(formatStepDuration(3_599_600)).toBe("1h");
   });
 
   it("renders the timeline component with stage statuses", () => {
