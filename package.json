@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
@@ -17,6 +19,7 @@
     "@anthropic-ai/sdk": "^0.80.0",
     "@convex-dev/workos": "0.0.1",
     "@convex-dev/workos-authkit": "0.1.6",
+    "@opennextjs/cloudflare": "^1.18.0",
     "@workos-inc/authkit-nextjs": "2.4.6",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
@@ -44,6 +47,7 @@
     "tailwindcss": "^3.4.17",
     "tsx": "^4.21.0",
     "typescript": "^5",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.2",
+    "wrangler": "^4.78.0"
   }
 }

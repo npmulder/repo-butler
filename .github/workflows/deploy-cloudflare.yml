@@ -1,0 +1,95 @@
+name: Deploy Cloudflare Workers
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-cloudflare-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: preview
+    permissions:
+      contents: read
+    env:
+      NEXT_PUBLIC_CONVEX_URL: ${{ vars.NEXT_PUBLIC_CONVEX_URL }}
+      NEXT_PUBLIC_WORKOS_REDIRECT_URI: ${{ vars.NEXT_PUBLIC_WORKOS_REDIRECT_URI }}
+      NEXT_PUBLIC_GITHUB_APP_SLUG: ${{ vars.NEXT_PUBLIC_GITHUB_APP_SLUG }}
+      WORKOS_CLIENT_ID: ${{ secrets.WORKOS_CLIENT_ID }}
+      WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
+      WORKOS_COOKIE_PASSWORD: ${{ secrets.WORKOS_COOKIE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10.6.5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - name: Build preview worker
+        run: pnpm exec opennextjs-cloudflare build --env preview
+      - name: Deploy preview worker
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --env preview --keep-vars --message "Preview deploy for PR #${{ github.event.pull_request.number }}"
+      - name: Write preview summary
+        run: |
+          {
+            echo "## Cloudflare Preview"
+            echo
+            echo "${{ steps.deploy.outputs.deployment-url }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  production:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+    env:
+      NEXT_PUBLIC_CONVEX_URL: ${{ vars.NEXT_PUBLIC_CONVEX_URL }}
+      NEXT_PUBLIC_WORKOS_REDIRECT_URI: ${{ vars.NEXT_PUBLIC_WORKOS_REDIRECT_URI }}
+      NEXT_PUBLIC_GITHUB_APP_SLUG: ${{ vars.NEXT_PUBLIC_GITHUB_APP_SLUG }}
+      WORKOS_CLIENT_ID: ${{ secrets.WORKOS_CLIENT_ID }}
+      WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
+      WORKOS_COOKIE_PASSWORD: ${{ secrets.WORKOS_COOKIE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10.6.5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - name: Build production worker
+        run: pnpm exec opennextjs-cloudflare build
+      - name: Deploy production worker
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --keep-vars --message "Production deploy for ${GITHUB_SHA}"
+      - name: Write production summary
+        run: |
+          {
+            echo "## Cloudflare Production"
+            echo
+            echo "${{ steps.deploy.outputs.deployment-url }}"
+          } >> "$GITHUB_STEP_SUMMARY"

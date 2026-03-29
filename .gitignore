@@ -37,3 +37,6 @@ yarn-error.log*
 # local orchestration artifacts
 .workpad-id
 workpad.md
+
+# OpenNext
+.open-next
