@@ -5,6 +5,7 @@ import {
   APIError,
   RateLimitError,
 } from "@anthropic-ai/sdk";
+import type { MessageCreateParamsNonStreaming } from "@anthropic-ai/sdk/resources/messages/messages";
 import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
@@ -14,6 +15,7 @@ import {
   DEFAULT_MAX_TOKENS,
   MODELS,
   getAnthropicClient,
+  getAnthropicRequestOptions,
   type TriageInput,
 } from "../lib/claude";
 import {
@@ -95,7 +97,7 @@ async function requestTriageAssessment(input: TriageInput) {
 
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
     try {
-      return await client.messages.create({
+      const requestBody: MessageCreateParamsNonStreaming = {
         model: MODELS.triage,
         max_tokens: DEFAULT_MAX_TOKENS,
         system: TRIAGE_SYSTEM_PROMPT,
@@ -111,7 +113,12 @@ async function requestTriageAssessment(input: TriageInput) {
             content: buildTriageUserPrompt(input),
           },
         ],
-      });
+      };
+
+      return await client.messages.create(
+        requestBody,
+        getAnthropicRequestOptions(requestBody),
+      );
     } catch (error) {
       if (!isRetryableClaudeError(error) || attempt === RETRY_DELAYS_MS.length) {
         throw error;

@@ -23,6 +23,14 @@ beforeEach(() => {
   vi.unstubAllEnvs();
 });
 
+function buildRequestBody() {
+  return {
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 64,
+    messages: [{ role: "user" as const, content: "Hello" }],
+  };
+}
+
 describe("getAnthropicClient", () => {
   it("defaults to direct Anthropic when no provider is configured", async () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "anthropic-key");
@@ -51,5 +59,69 @@ describe("getAnthropicClient", () => {
       apiKey: "openrouter-key",
       baseURL: "https://openrouter.ai/api",
     });
+  });
+});
+
+describe("getAnthropicRequestOptions", () => {
+  it("defaults OpenRouter routing to Anthropic-first fallbacks", async () => {
+    vi.stubEnv("LLM_PROVIDER", "openrouter");
+
+    const { getAnthropicRequestOptions } = await import("../lib/claude");
+    const requestBody = buildRequestBody();
+
+    expect(getAnthropicRequestOptions(requestBody)).toEqual({
+      body: {
+        ...requestBody,
+        provider: {
+          order: ["anthropic", "amazon-bedrock", "google-vertex"],
+          allow_fallbacks: true,
+        },
+      },
+    });
+  });
+
+  it("normalizes configured provider order names into OpenRouter slugs", async () => {
+    vi.stubEnv("LLM_PROVIDER", "openrouter");
+    vi.stubEnv("OPENROUTER_PROVIDER_ORDER", "Anthropic,Amazon Bedrock,Google");
+
+    const { getAnthropicRequestOptions } = await import("../lib/claude");
+    const requestBody = buildRequestBody();
+
+    expect(getAnthropicRequestOptions(requestBody)).toEqual({
+      body: {
+        ...requestBody,
+        provider: {
+          order: ["anthropic", "amazon-bedrock", "google-vertex"],
+          allow_fallbacks: true,
+        },
+      },
+    });
+  });
+
+  it("switches OpenRouter routing to price sorting in cheapest mode", async () => {
+    vi.stubEnv("LLM_PROVIDER", "openrouter");
+    vi.stubEnv("OPENROUTER_ROUTE", "cheapest");
+
+    const { getAnthropicRequestOptions } = await import("../lib/claude");
+    const requestBody = buildRequestBody();
+
+    expect(getAnthropicRequestOptions(requestBody)).toEqual({
+      body: {
+        ...requestBody,
+        provider: {
+          sort: "price",
+        },
+      },
+    });
+  });
+
+  it("has no effect when the direct Anthropic provider is active", async () => {
+    vi.stubEnv("LLM_PROVIDER", "anthropic");
+    vi.stubEnv("OPENROUTER_PROVIDER_ORDER", "Anthropic,Amazon Bedrock,Google");
+    vi.stubEnv("OPENROUTER_ROUTE", "cheapest");
+
+    const { getAnthropicRequestOptions } = await import("../lib/claude");
+
+    expect(getAnthropicRequestOptions(buildRequestBody())).toBeUndefined();
   });
 });
