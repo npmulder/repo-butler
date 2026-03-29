@@ -72,6 +72,9 @@ describe("dashboard query helpers", () => {
       { status: "pending" },
       { status: "triaging" },
       { status: "awaiting_approval" },
+      { status: "approved" },
+      { status: "rejected" },
+      { status: "needs_info" },
       { status: "reproducing" },
       { status: "verifying" },
       { status: "completed" },
@@ -84,8 +87,8 @@ describe("dashboard query helpers", () => {
       awaitingApproval: 1,
       completed: 1,
       failed: 2,
-      total24h: 8,
-      triaged: 6,
+      total24h: 11,
+      triaged: 9,
     });
   });
 });

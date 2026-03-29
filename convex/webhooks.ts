@@ -7,9 +7,20 @@ import {
   type MutationCtx,
 } from "./_generated/server";
 import {
+  approvalActionFromComment,
+  approvalActionFromLabel,
+  processApprovalCommentEvent,
+  processApprovalLabelEvent,
+} from "./approvalGate";
+import {
   processWebhookDelivery,
+  type RepoWebhookEventType,
   type WebhookStore,
 } from "./lib/githubWebhooks";
+import {
+  isRepoEventTypeEnabled,
+  loadNormalizedRepoSettings,
+} from "./repoSettings";
 
 const webhookDispatchValidator = v.union(
   v.literal("issue_opened"),
@@ -19,6 +30,11 @@ const webhookDispatchValidator = v.union(
   v.literal("installation_suspended"),
   v.literal("ignored"),
 );
+const approvalWebhookResultValidator = v.object({
+  success: v.boolean(),
+  error: v.optional(v.string()),
+  ignored: v.optional(v.boolean()),
+});
 
 function createWebhookStore(
   ctx: MutationCtx,
@@ -63,6 +79,10 @@ function createWebhookStore(
         userId: repo.userId,
         fullName: repo.fullName,
       };
+    },
+    isEventTypeEnabled: async (repoId, eventType: RepoWebhookEventType) => {
+      const settings = await loadNormalizedRepoSettings(ctx, repoId);
+      return isRepoEventTypeEnabled(settings, eventType);
     },
     createIssueSnapshot: async (input) => {
       const now = Date.now();
@@ -154,6 +174,86 @@ export const processWebhook = internalMutation({
       event: args.event,
       action: args.action,
       payload: args.payload,
+    });
+  },
+});
+
+export const handleLabelAdded = internalMutation({
+  args: {
+    repoFullName: v.string(),
+    issueNumber: v.int64(),
+    labelName: v.string(),
+    actor: v.string(),
+  },
+  returns: approvalWebhookResultValidator,
+  handler: async (ctx, args) => {
+    if (!approvalActionFromLabel(args.labelName)) {
+      return { success: false, ignored: true };
+    }
+
+    const repo = await ctx.db
+      .query("repos")
+      .withIndex("by_full_name", (indexQuery) =>
+        indexQuery.eq("fullName", args.repoFullName),
+      )
+      .unique();
+
+    if (!repo) {
+      return { success: false, error: "Repo not found" };
+    }
+
+    const settings = await loadNormalizedRepoSettings(ctx, repo._id);
+
+    if (!isRepoEventTypeEnabled(settings, "issues.labeled")) {
+      return { success: false, ignored: true };
+    }
+
+    return await processApprovalLabelEvent(ctx, {
+      repoId: repo._id,
+      issueNumber: args.issueNumber,
+      labelName: args.labelName,
+      actor: args.actor,
+    });
+  },
+});
+
+export const handleCommentAdded = internalMutation({
+  args: {
+    repoFullName: v.string(),
+    issueNumber: v.int64(),
+    commentBody: v.string(),
+    actor: v.string(),
+    authorAssociation: v.optional(v.string()),
+  },
+  returns: approvalWebhookResultValidator,
+  handler: async (ctx, args) => {
+    if (!approvalActionFromComment(args.commentBody)) {
+      return { success: false, ignored: true };
+    }
+
+    const repo = await ctx.db
+      .query("repos")
+      .withIndex("by_full_name", (indexQuery) =>
+        indexQuery.eq("fullName", args.repoFullName),
+      )
+      .unique();
+
+    if (!repo) {
+      return { success: false, error: "Repo not found" };
+    }
+
+    const settings = await loadNormalizedRepoSettings(ctx, repo._id);
+
+    if (!isRepoEventTypeEnabled(settings, "issue_comment.created")) {
+      return { success: false, ignored: true };
+    }
+
+    return await processApprovalCommentEvent(ctx, {
+      repoId: repo._id,
+      issueNumber: args.issueNumber,
+      commentBody: args.commentBody,
+      actor: args.actor,
+      authorAssociation: args.authorAssociation,
     });
   },
 });

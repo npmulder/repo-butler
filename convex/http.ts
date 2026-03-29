@@ -7,6 +7,84 @@ import { verifyWebhookSignature } from "./lib/githubWebhooks";
 
 const http = httpRouter();
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function readRecord(
+  value: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> | null {
+  const nested = value[key];
+  return isRecord(nested) ? nested : null;
+}
+
+function extractRepoFullName(payload: unknown) {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  return readString(readRecord(payload, "repository")?.full_name);
+}
+
+function extractIssueNumber(payload: unknown) {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const issue = readRecord(payload, "issue");
+  const issueNumber = issue?.number;
+
+  if (typeof issueNumber === "number" && Number.isSafeInteger(issueNumber)) {
+    return BigInt(issueNumber);
+  }
+
+  if (typeof issueNumber === "string" && /^-?\d+$/.test(issueNumber)) {
+    return BigInt(issueNumber);
+  }
+
+  return null;
+}
+
+function extractLabelName(payload: unknown) {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  return readString(readRecord(payload, "label")?.name);
+}
+
+function extractCommentBody(payload: unknown) {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  return readString(readRecord(payload, "comment")?.body);
+}
+
+function extractCommentAuthorAssociation(payload: unknown) {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  return readString(readRecord(payload, "comment")?.author_association);
+}
+
+function extractActor(payload: unknown) {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  return (
+    readString(readRecord(payload, "sender")?.login) ??
+    readString(readRecord(readRecord(payload, "comment") ?? {}, "user")?.login)
+  );
+}
+
 if (authKit) {
   authKit.registerRoutes(http);
 }
@@ -71,6 +149,40 @@ http.route({
         action,
         payload,
       });
+
+      if (event === "issues" && action === "labeled") {
+        const repoFullName = extractRepoFullName(payload);
+        const issueNumber = extractIssueNumber(payload);
+        const labelName = extractLabelName(payload);
+        const actor = extractActor(payload);
+
+        if (repoFullName && issueNumber !== null && labelName && actor) {
+          await ctx.runMutation(internal.webhooks.handleLabelAdded, {
+            repoFullName,
+            issueNumber,
+            labelName,
+            actor,
+          });
+        }
+      }
+
+      if (event === "issue_comment" && action === "created") {
+        const repoFullName = extractRepoFullName(payload);
+        const issueNumber = extractIssueNumber(payload);
+        const commentBody = extractCommentBody(payload);
+        const actor = extractActor(payload);
+        const authorAssociation = extractCommentAuthorAssociation(payload);
+
+        if (repoFullName && issueNumber !== null && commentBody && actor) {
+          await ctx.runMutation(internal.webhooks.handleCommentAdded, {
+            repoFullName,
+            issueNumber,
+            commentBody,
+            actor,
+            ...(authorAssociation ? { authorAssociation } : {}),
+          });
+        }
+      }
 
       return new Response(result.duplicate ? "Already processed" : "OK", {
         status: 200,

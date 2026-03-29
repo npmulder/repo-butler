@@ -8,10 +8,13 @@ const timestampFormatter = new Intl.DateTimeFormat("en-GB", {
 
 const runStatusLabels = {
   awaiting_approval: "Awaiting approval",
+  approved: "Approved",
   cancelled: "Cancelled",
   completed: "Completed",
   failed: "Failed",
+  needs_info: "Needs info",
   pending: "Pending",
+  rejected: "Rejected",
   reproducing: "Reproducing",
   triaging: "Triaging",
   verifying: "Verifying",

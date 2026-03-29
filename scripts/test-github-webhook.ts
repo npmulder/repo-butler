@@ -71,6 +71,7 @@ function createMemoryStore(state: MemoryState): WebhookStore<
         ? { id: repo.id, userId: repo.userId, fullName: repo.fullName }
         : null;
     },
+    isEventTypeEnabled: async () => true,
     createIssueSnapshot: async (input) => {
       const issue: IssueRecord = {
         id: `issue_${state.issues.length + 1}`,
