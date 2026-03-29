@@ -14,8 +14,13 @@ import {
 } from "./approvalGate";
 import {
   processWebhookDelivery,
+  type RepoWebhookEventType,
   type WebhookStore,
 } from "./lib/githubWebhooks";
+import {
+  isRepoEventTypeEnabled,
+  loadNormalizedRepoSettings,
+} from "./repoSettings";
 
 const webhookDispatchValidator = v.union(
   v.literal("issue_opened"),
@@ -74,6 +79,10 @@ function createWebhookStore(
         userId: repo.userId,
         fullName: repo.fullName,
       };
+    },
+    isEventTypeEnabled: async (repoId, eventType: RepoWebhookEventType) => {
+      const settings = await loadNormalizedRepoSettings(ctx, repoId);
+      return isRepoEventTypeEnabled(settings, eventType);
     },
     createIssueSnapshot: async (input) => {
       const now = Date.now();
@@ -193,6 +202,12 @@ export const handleLabelAdded = internalMutation({
       return { success: false, error: "Repo not found" };
     }
 
+    const settings = await loadNormalizedRepoSettings(ctx, repo._id);
+
+    if (!isRepoEventTypeEnabled(settings, "issues.labeled")) {
+      return { success: false, ignored: true };
+    }
+
     return await processApprovalLabelEvent(ctx, {
       repoId: repo._id,
       issueNumber: args.issueNumber,
@@ -208,6 +223,7 @@ export const handleCommentAdded = internalMutation({
     issueNumber: v.int64(),
     commentBody: v.string(),
     actor: v.string(),
+    authorAssociation: v.optional(v.string()),
   },
   returns: approvalWebhookResultValidator,
   handler: async (ctx, args) => {
@@ -226,11 +242,18 @@ export const handleCommentAdded = internalMutation({
       return { success: false, error: "Repo not found" };
     }
 
+    const settings = await loadNormalizedRepoSettings(ctx, repo._id);
+
+    if (!isRepoEventTypeEnabled(settings, "issue_comment.created")) {
+      return { success: false, ignored: true };
+    }
+
     return await processApprovalCommentEvent(ctx, {
       repoId: repo._id,
       issueNumber: args.issueNumber,
       commentBody: args.commentBody,
       actor: args.actor,
+      authorAssociation: args.authorAssociation,
     });
   },
 });

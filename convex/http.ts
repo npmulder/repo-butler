@@ -66,6 +66,14 @@ function extractCommentBody(payload: unknown) {
   return readString(readRecord(payload, "comment")?.body);
 }
 
+function extractCommentAuthorAssociation(payload: unknown) {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  return readString(readRecord(payload, "comment")?.author_association);
+}
+
 function extractActor(payload: unknown) {
   if (!isRecord(payload)) {
     return null;
@@ -142,37 +150,37 @@ http.route({
         payload,
       });
 
-      if (!result.duplicate) {
-        if (event === "issues" && action === "labeled") {
-          const repoFullName = extractRepoFullName(payload);
-          const issueNumber = extractIssueNumber(payload);
-          const labelName = extractLabelName(payload);
-          const actor = extractActor(payload);
+      if (event === "issues" && action === "labeled") {
+        const repoFullName = extractRepoFullName(payload);
+        const issueNumber = extractIssueNumber(payload);
+        const labelName = extractLabelName(payload);
+        const actor = extractActor(payload);
 
-          if (repoFullName && issueNumber !== null && labelName && actor) {
-            await ctx.runMutation(internal.webhooks.handleLabelAdded, {
-              repoFullName,
-              issueNumber,
-              labelName,
-              actor,
-            });
-          }
+        if (repoFullName && issueNumber !== null && labelName && actor) {
+          await ctx.runMutation(internal.webhooks.handleLabelAdded, {
+            repoFullName,
+            issueNumber,
+            labelName,
+            actor,
+          });
         }
+      }
 
-        if (event === "issue_comment" && action === "created") {
-          const repoFullName = extractRepoFullName(payload);
-          const issueNumber = extractIssueNumber(payload);
-          const commentBody = extractCommentBody(payload);
-          const actor = extractActor(payload);
+      if (event === "issue_comment" && action === "created") {
+        const repoFullName = extractRepoFullName(payload);
+        const issueNumber = extractIssueNumber(payload);
+        const commentBody = extractCommentBody(payload);
+        const actor = extractActor(payload);
+        const authorAssociation = extractCommentAuthorAssociation(payload);
 
-          if (repoFullName && issueNumber !== null && commentBody && actor) {
-            await ctx.runMutation(internal.webhooks.handleCommentAdded, {
-              repoFullName,
-              issueNumber,
-              commentBody,
-              actor,
-            });
-          }
+        if (repoFullName && issueNumber !== null && commentBody && actor) {
+          await ctx.runMutation(internal.webhooks.handleCommentAdded, {
+            repoFullName,
+            issueNumber,
+            commentBody,
+            actor,
+            ...(authorAssociation ? { authorAssociation } : {}),
+          });
         }
       }
 

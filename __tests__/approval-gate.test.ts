@@ -6,7 +6,9 @@ import {
   approvalPolicies,
   buildApprovalPatch,
   evaluateApprovalGate,
+  isMaintainerCommentAuthorAssociation,
 } from "../convex/approvalGate";
+import { normalizeAreaLabel } from "../lib/areaLabels";
 import { STATUS_LABELS } from "../lib/labels";
 
 describe("approval gate", () => {
@@ -152,5 +154,17 @@ describe("approval gate", () => {
     expect(approvalActionFromComment("@repobutler request-info")).toBe(
       "request_info",
     );
+  });
+
+  it("only accepts maintainer-associated comment approvals", () => {
+    expect(isMaintainerCommentAuthorAssociation("OWNER")).toBe(true);
+    expect(isMaintainerCommentAuthorAssociation("member")).toBe(true);
+    expect(isMaintainerCommentAuthorAssociation("CONTRIBUTOR")).toBe(false);
+    expect(isMaintainerCommentAuthorAssociation(undefined)).toBe(false);
+  });
+
+  it("normalizes area labels consistently", () => {
+    expect(normalizeAreaLabel(" area:Parser Errors ")).toBe("area:parser-errors");
+    expect(normalizeAreaLabel("Parser Errors")).toBe("area:parser-errors");
   });
 });

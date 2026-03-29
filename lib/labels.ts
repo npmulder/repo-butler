@@ -1,4 +1,7 @@
 import type { Octokit } from "octokit";
+import { normalizeAreaLabel } from "./areaLabels";
+
+export { AREA_LABEL_PREFIX } from "./areaLabels";
 
 export const TYPE_LABELS = {
   bug: "type:bug",
@@ -26,8 +29,6 @@ export const SEVERITY_LABELS = {
   high: "severity:high",
   critical: "severity:critical",
 } as const;
-
-export const AREA_LABEL_PREFIX = "area:";
 
 export const ALL_RB_LABELS = [
   ...Object.values(TYPE_LABELS),
@@ -66,18 +67,6 @@ type TriageClassification = {
 
 function dedupeLabels(labels: string[]) {
   return [...new Set(labels)];
-}
-
-function normalizeAreaLabel(area: string) {
-  const trimmed = area.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  return trimmed.startsWith(AREA_LABEL_PREFIX)
-    ? trimmed
-    : `${AREA_LABEL_PREFIX}${trimmed}`;
 }
 
 export function triageToLabels(classification: TriageClassification): string[] {

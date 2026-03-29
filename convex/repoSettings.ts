@@ -9,6 +9,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { requireRepoAccess } from "./lib/auth";
+import { normalizeAreaLabelValue } from "../lib/areaLabels";
 
 export const DEFAULT_ENABLED_EVENT_TYPES = [
   "issues.opened",
@@ -19,6 +20,7 @@ export const DEFAULT_ENABLED_EVENT_TYPES = [
 export const DEFAULT_AUTO_APPROVE_THRESHOLD = 0.7;
 export const DEFAULT_MAX_CONCURRENT_RUNS = 3;
 export const DEFAULT_MAX_DAILY_RUNS = 20;
+export type RepoSettingsEventType = (typeof DEFAULT_ENABLED_EVENT_TYPES)[number];
 
 const approvalPolicyValidator = v.union(
   v.literal("auto_approve"),
@@ -62,19 +64,9 @@ function coerceCount(value: bigint | undefined, fallback: number) {
   return Math.max(1, Math.floor(numericValue));
 }
 
-function normalizeAreaLabel(value: string) {
-  const trimmed = value.trim().replace(/^area:/i, "");
-
-  if (!trimmed) {
-    return null;
-  }
-
-  return trimmed.toLowerCase().replace(/\s+/g, "-");
-}
-
 function normalizeAreaLabels(values: string[] | undefined) {
   const normalized = values
-    ?.map((value) => normalizeAreaLabel(value))
+    ?.map((value) => normalizeAreaLabelValue(value))
     .filter((value): value is string => value !== null) ?? [];
 
   return [...new Set(normalized)];
@@ -150,6 +142,13 @@ export async function loadNormalizedRepoSettings(
   repoId: Id<"repos">,
 ) {
   return normalizeSettings(repoId, await loadRepoSettings(ctx, repoId));
+}
+
+export function isRepoEventTypeEnabled(
+  settings: Pick<RepoSettingsSnapshot, "enabledEventTypes">,
+  eventType: RepoSettingsEventType,
+) {
+  return settings.enabledEventTypes.includes(eventType);
 }
 
 function clampThreshold(value: number | undefined) {

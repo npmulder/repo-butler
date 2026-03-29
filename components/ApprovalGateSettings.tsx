@@ -14,6 +14,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { buttonStyles } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
+import { normalizeAreaLabelValue } from "@/lib/areaLabels";
 import { cn } from "@/lib/utils";
 
 type ApprovalPolicy = "auto_approve" | "require_label" | "require_comment";
@@ -96,16 +97,6 @@ function buildFormState(settings: RepoSettingsData): ApprovalGateFormState {
   };
 }
 
-function normalizeAreaLabel(value: string) {
-  const trimmed = value.trim().replace(/^area:/i, "");
-
-  if (!trimmed) {
-    return null;
-  }
-
-  return trimmed.toLowerCase().replace(/\s+/g, "-");
-}
-
 function parseThreshold(value: string) {
   const numericValue = Number.parseFloat(value);
 
@@ -155,7 +146,7 @@ export function ApprovalGateSettings({ repoId }: { repoId: string }) {
   }
 
   const addAreaLabel = (rawValue: string) => {
-    const normalizedValue = normalizeAreaLabel(rawValue);
+    const normalizedValue = normalizeAreaLabelValue(rawValue);
 
     if (!normalizedValue) {
       setFormState((current) =>

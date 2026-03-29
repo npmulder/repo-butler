@@ -1,6 +1,7 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { ConvexHttpClient } from "convex/browser";
 import { NextRequest, NextResponse } from "next/server";
+import type { Octokit } from "octokit";
 
 import { api } from "@/convex/_generated/api";
 import {
@@ -91,8 +92,7 @@ function parseSuspendedAt(value: string | null | undefined) {
   return Number.isNaN(timestamp) ? undefined : timestamp;
 }
 
-async function listAccessibleRepos(installationId: number) {
-  const octokit = await getInstallationOctokit(installationId);
+async function listAccessibleRepos(octokit: Octokit) {
   const repos: {
     owner: string;
     name: string;
@@ -122,21 +122,36 @@ async function listAccessibleRepos(installationId: number) {
 }
 
 async function syncRepoButlerLabels(
-  installationId: number,
+  octokit: Octokit,
   repos: Awaited<ReturnType<typeof listAccessibleRepos>>,
 ) {
-  const octokit = await getInstallationOctokit(installationId);
+  const maxConcurrency = 5;
+  let nextRepoIndex = 0;
 
-  for (const repo of repos) {
-    try {
-      await syncLabelsToRepo(octokit, repo.owner, repo.name);
-    } catch (error) {
-      console.warn(
-        `[github/setup] Failed to sync Repo Butler labels for ${repo.owner}/${repo.name}`,
-        error,
-      );
+  async function worker() {
+    while (true) {
+      const repo = repos[nextRepoIndex];
+
+      if (!repo) {
+        return;
+      }
+
+      nextRepoIndex += 1;
+
+      try {
+        await syncLabelsToRepo(octokit, repo.owner, repo.name);
+      } catch (error) {
+        console.warn(
+          `[github/setup] Failed to sync Repo Butler labels for ${repo.owner}/${repo.name}`,
+          error,
+        );
+      }
     }
   }
+
+  await Promise.all(
+    Array.from({ length: Math.min(maxConcurrency, repos.length) }, () => worker()),
+  );
 }
 
 export const GET = async (request: NextRequest) => {
@@ -211,12 +226,13 @@ export const GET = async (request: NextRequest) => {
         ...(suspendedAt !== undefined ? { suspendedAt } : {}),
       },
     );
-    const repos = await listAccessibleRepos(installationId);
+    const octokit = await getInstallationOctokit(installationId);
+    const repos = await listAccessibleRepos(octokit);
     const syncResult = await convex.mutation(api.repos.syncFromGitHub, {
       installationId: installationDocId,
       repos,
     });
-    await syncRepoButlerLabels(installationId, repos);
+    await syncRepoButlerLabels(octokit, repos);
 
     return clearInstallStateCookie(
       redirectToRepos(request, {

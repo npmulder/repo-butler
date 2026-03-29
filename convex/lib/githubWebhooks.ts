@@ -59,6 +59,10 @@ export type ProcessWebhookResult = {
   duplicate: boolean;
   dispatch: WebhookDispatch;
 };
+export type RepoWebhookEventType =
+  | "issues.opened"
+  | "issues.labeled"
+  | "issue_comment.created";
 
 export interface WebhookStore<
   RepoId,
@@ -77,6 +81,10 @@ export interface WebhookStore<
   getActiveRepoByFullName(
     fullName: string,
   ): Promise<WebhookRepo<RepoId, UserId> | null>;
+  isEventTypeEnabled(
+    repoId: RepoId,
+    eventType: RepoWebhookEventType,
+  ): Promise<boolean>;
   createIssueSnapshot(
     input: IssueSnapshotInput<RepoId>,
   ): Promise<WebhookIssue<IssueId, RepoId>>;
@@ -302,7 +310,11 @@ export async function processWebhookDelivery<
       ? extractIssueSnapshotInput(repo.id, input.payload)
       : null;
 
-    if (repo && issueInput) {
+    if (
+      repo &&
+      issueInput &&
+      (await store.isEventTypeEnabled(repo.id, "issues.opened"))
+    ) {
       const issue = await store.createIssueSnapshot(issueInput);
       await createRunForIssue(
         store,
@@ -322,7 +334,12 @@ export async function processWebhookDelivery<
       ? extractIssueSnapshotInput(repo.id, input.payload)
       : null;
 
-    if (repo && issueInput && extractLabelName(input.payload) === "repro-me") {
+    if (
+      repo &&
+      issueInput &&
+      (await store.isEventTypeEnabled(repo.id, "issues.labeled")) &&
+      extractLabelName(input.payload) === "repro-me"
+    ) {
       const issue = await store.createIssueSnapshot(issueInput);
       await createRunForIssue(store, repo, issue, "label_added", processedAt);
       dispatch = "repro_label";
@@ -341,9 +358,14 @@ export async function processWebhookDelivery<
       ? extractIssueSnapshotInput(repo.id, input.payload)
       : null;
 
+    const commentEventsEnabled =
+      repo &&
+      (await store.isEventTypeEnabled(repo.id, "issue_comment.created"));
+
     if (
       repo &&
       issueInput &&
+      commentEventsEnabled &&
       (command === "triage" || command === "reproduce")
     ) {
       const issue = await store.createIssueSnapshot(issueInput);
@@ -355,7 +377,7 @@ export async function processWebhookDelivery<
         processedAt,
       );
       dispatch = "comment_command";
-    } else if (repo && issueInput && command === "status") {
+    } else if (repo && issueInput && commentEventsEnabled && command === "status") {
       dispatch = "status_command";
     }
   } else if (input.event === "installation") {

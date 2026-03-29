@@ -2,13 +2,15 @@ import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import {
-  internalMutation,
   internalQuery,
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
 import { STATUS_LABELS } from "../lib/labels";
 import {
+  DEFAULT_AUTO_APPROVE_THRESHOLD,
+  DEFAULT_MAX_CONCURRENT_RUNS,
+  DEFAULT_MAX_DAILY_RUNS,
   loadNormalizedRepoSettings,
   type RepoSettingsSnapshot,
 } from "./repoSettings";
@@ -54,10 +56,11 @@ const approvalDecisionValidator = v.object({
   approved: v.boolean(),
   reason: v.string(),
 });
-const approvalMutationResultValidator = v.object({
-  success: v.boolean(),
-  error: v.optional(v.string()),
-});
+const maintainerAuthorAssociations = new Set([
+  "COLLABORATOR",
+  "MEMBER",
+  "OWNER",
+]);
 
 function formatAwaitingApprovalReason(settings: ApprovalGateSettings | null) {
   if (!settings || settings.isDefault) {
@@ -88,9 +91,9 @@ export function evaluateApprovalGate({
 
   const resolvedSettings = settings ?? {
     approvalPolicy: approvalPolicies.requireLabel,
-    autoApproveThreshold: 0.7,
-    maxConcurrentRuns: 3,
-    maxDailyRuns: 20,
+    autoApproveThreshold: DEFAULT_AUTO_APPROVE_THRESHOLD,
+    maxConcurrentRuns: DEFAULT_MAX_CONCURRENT_RUNS,
+    maxDailyRuns: DEFAULT_MAX_DAILY_RUNS,
     isDefault: true,
   };
 
@@ -154,6 +157,30 @@ export function approvalActionFromComment(
   }
 
   return "request_info";
+}
+
+export function isMaintainerCommentAuthorAssociation(
+  authorAssociation: string | null | undefined,
+) {
+  return (
+    typeof authorAssociation === "string" &&
+    maintainerAuthorAssociations.has(authorAssociation.toUpperCase())
+  );
+}
+
+function allowsApprovalSource(
+  settings: RepoSettingsSnapshot,
+  source: "comment" | "label",
+) {
+  if (settings.approvalPolicy === approvalPolicies.requireComment) {
+    return source === "comment";
+  }
+
+  if (settings.approvalPolicy === approvalPolicies.requireLabel) {
+    return source === "label";
+  }
+
+  return true;
 }
 
 export function buildApprovalPatch({
@@ -315,6 +342,12 @@ export async function processApprovalLabelEvent(
     return { success: false, error: "Unrecognized approval label" };
   }
 
+  const settings = await loadNormalizedRepoSettings(ctx, args.repoId);
+
+  if (!allowsApprovalSource(settings, "label")) {
+    return { success: false, error: "Repo requires comment-based approval" };
+  }
+
   const run = await loadLatestRunForIssue(ctx, args.repoId, args.issueNumber);
 
   if (!run) {
@@ -335,12 +368,26 @@ export async function processApprovalCommentEvent(
     issueNumber: bigint;
     commentBody: string;
     actor: string;
+    authorAssociation?: string;
   },
 ) {
   const action = approvalActionFromComment(args.commentBody);
 
   if (!action) {
     return { success: false, error: "Unrecognized approval comment" };
+  }
+
+  const settings = await loadNormalizedRepoSettings(ctx, args.repoId);
+
+  if (!allowsApprovalSource(settings, "comment")) {
+    return { success: false, error: "Repo requires label-based approval" };
+  }
+
+  if (!isMaintainerCommentAuthorAssociation(args.authorAssociation)) {
+    return {
+      success: false,
+      error: "Comment approval requires maintainer association",
+    };
   }
 
   const run = await loadLatestRunForIssue(ctx, args.repoId, args.issueNumber);
@@ -388,47 +435,5 @@ export const checkApproval = internalQuery({
       activeRuns,
       dailyRuns,
     });
-  },
-});
-
-export const processApproval = internalMutation({
-  args: {
-    runId: v.id("runs"),
-    action: v.union(
-      v.literal("approve"),
-      v.literal("reject"),
-      v.literal("request_info"),
-    ),
-    approvedBy: v.string(),
-  },
-  returns: approvalMutationResultValidator,
-  handler: async (ctx, args) => {
-    return await applyApproval(ctx, args);
-  },
-});
-
-export const handleApprovalLabel = internalMutation({
-  args: {
-    repoId: v.id("repos"),
-    issueNumber: v.int64(),
-    labelName: v.string(),
-    actor: v.string(),
-  },
-  returns: approvalMutationResultValidator,
-  handler: async (ctx, args) => {
-    return await processApprovalLabelEvent(ctx, args);
-  },
-});
-
-export const handleApprovalComment = internalMutation({
-  args: {
-    repoId: v.id("repos"),
-    issueNumber: v.int64(),
-    commentBody: v.string(),
-    actor: v.string(),
-  },
-  returns: approvalMutationResultValidator,
-  handler: async (ctx, args) => {
-    return await processApprovalCommentEvent(ctx, args);
   },
 });
