@@ -13,6 +13,7 @@ import {
   buildReproducerFeedback,
   extractReproArtifactFromResponse,
   extractReproPlanFromResponse,
+  findRelevantReproStep,
   matchesExpectedFailureSignal,
   validateReproPlanArtifact,
   validateReproRunArtifact,
@@ -266,6 +267,37 @@ describe("reproducer parser", () => {
     expect(command).toContain("REPRO_EOF_MARKER_1");
     expect(command).not.toContain("cat <<'REPRO_EOF_MARKER' >");
   });
+
+  it("rejects artifact paths that escape the repository workspace", () => {
+    expect(() =>
+      buildArtifactWriteCommand({
+        ...buildArtifactToolOutput(),
+        file_path: "../escape.ts",
+      }),
+    ).toThrow("Invalid artifact path");
+    expect(() =>
+      buildArtifactWriteCommand({
+        ...buildArtifactToolOutput(),
+        file_path: "/tmp/escape.ts",
+      }),
+    ).toThrow("Invalid artifact path");
+    expect(() =>
+      buildReproPlanArtifact({
+        runId: "run_repro_fixture",
+        toolOutput: {
+          ...buildPlanToolOutput(),
+          artifact: {
+            ...buildPlanToolOutput().artifact,
+            path: "../escape.ts",
+          },
+        },
+        defaultBaseRevision: {
+          ref: "refs/heads/main",
+          sha: "deadbee",
+        },
+      }),
+    ).toThrow("Invalid artifact path");
+  });
 });
 
 describe("reproducer feedback analysis", () => {
@@ -297,6 +329,42 @@ describe("reproducer feedback analysis", () => {
         }),
       ),
     ).toBe("All commands succeeded - expected failure signal did not appear");
+  });
+
+  it("prefers the failed planned step over a later successful command", () => {
+    const sandboxResult = {
+      ...buildSandboxResult(),
+      steps: [
+        {
+          name: "plan_step_1",
+          cmd: "npm ci",
+          exitCode: 1,
+          stdoutSha256: "a".repeat(64),
+          stderrSha256: "b".repeat(64),
+          durationMs: 1234,
+          stdoutTail: "",
+          stderrTail: "npm error",
+        },
+        {
+          name: "run_test",
+          cmd: "npx vitest run repro-issue-42.test.ts",
+          exitCode: 0,
+          stdoutSha256: "c".repeat(64),
+          stderrSha256: "d".repeat(64),
+          durationMs: 10,
+          stdoutTail: "cleanup complete",
+          stderrTail: "",
+        },
+      ],
+    };
+
+    expect(
+      findRelevantReproStep(sandboxResult, ["plan_step_1", "run_test"]),
+    ).toMatchObject({
+      name: "plan_step_1",
+      exitCode: 1,
+      stderrTail: "npm error",
+    });
   });
 
   it("builds feedback from the failing step when later steps succeed", () => {

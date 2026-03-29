@@ -88,6 +88,34 @@ function chooseHereDocDelimiter(content: string): string {
   return delimiter;
 }
 
+function normalizeArtifactPath(filePath: string): string {
+  const trimmedPath = filePath.trim();
+
+  if (!trimmedPath) {
+    throw new Error("Invalid artifact path: path is required");
+  }
+
+  if (path.posix.isAbsolute(trimmedPath) || path.isAbsolute(trimmedPath)) {
+    throw new Error(
+      `Invalid artifact path: absolute paths are not allowed (${filePath})`,
+    );
+  }
+
+  const normalizedPath = path.posix.normalize(trimmedPath);
+
+  if (
+    normalizedPath === "." ||
+    normalizedPath === ".." ||
+    normalizedPath.startsWith("../")
+  ) {
+    throw new Error(
+      `Invalid artifact path: must stay within the repository (${filePath})`,
+    );
+  }
+
+  return normalizedPath;
+}
+
 export function extractToolCall<T>(
   response: Message,
   toolName: string,
@@ -130,6 +158,7 @@ export function buildReproPlanArtifact(input: {
   const preferred = normalizeStrategyOrDefault(
     input.toolOutput.environment_strategy.preferred,
   );
+  const artifactPath = normalizeArtifactPath(input.toolOutput.artifact.path);
 
   return {
     schema_version: "rb.repro_plan.v1",
@@ -153,7 +182,7 @@ export function buildReproPlanArtifact(input: {
     commands: commands as ReproPlan["commands"],
     artifact: {
       type: input.toolOutput.artifact.type,
-      path: input.toolOutput.artifact.path,
+      path: artifactPath,
       ...(input.toolOutput.artifact.entrypoint?.trim()
         ? { entrypoint: input.toolOutput.artifact.entrypoint.trim() }
         : {}),
@@ -359,12 +388,13 @@ export function validateReproRunArtifact(
 export function buildArtifactWriteCommand(
   artifact: ReproArtifactToolOutput,
 ): string {
+  const artifactPath = normalizeArtifactPath(artifact.file_path);
   const delimiter = chooseHereDocDelimiter(artifact.content);
-  const directory = path.posix.dirname(artifact.file_path);
+  const directory = path.posix.dirname(artifactPath);
 
   return [
     `mkdir -p ${shellQuote(directory)}`,
-    `cat <<'${delimiter}' > ${shellQuote(artifact.file_path)}`,
+    `cat <<'${delimiter}' > ${shellQuote(artifactPath)}`,
     artifact.content,
     delimiter,
   ].join("\n");
@@ -443,15 +473,28 @@ export function findRelevantReproStep(
   result: SandboxResult,
   commandNames: string[],
 ): StepResult | undefined {
+  const fallbackStep = result.steps[result.steps.length - 1];
+
   if (commandNames.length === 0) {
-    return result.steps[result.steps.length - 1];
+    return (
+      [...result.steps].reverse().find((step) => step.exitCode !== 0) ??
+      fallbackStep
+    );
+  }
+
+  const failedByName = [...result.steps]
+    .reverse()
+    .find((step) => commandNames.includes(step.name) && step.exitCode !== 0);
+
+  if (failedByName) {
+    return failedByName;
   }
 
   const byName = [...result.steps]
     .reverse()
     .find((step) => commandNames.includes(step.name));
 
-  return byName ?? result.steps[result.steps.length - 1];
+  return byName ?? fallbackStep;
 }
 
 export function matchesExpectedFailureSignal(
