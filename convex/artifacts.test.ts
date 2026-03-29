@@ -8,14 +8,17 @@ import {
   seedRepo,
   seedRun,
   seedUser,
-} from "./testHelpers";
+} from "../test/convex/testHelpers";
 
-function buildTriageArtifact(runId: string, overrides: Partial<{
-  confidence: number;
-  labelsSuggested: string[];
-  reproEligible: boolean;
-  summary: string;
-}> = {}) {
+function buildTriageArtifact(
+  runId: string,
+  overrides: Partial<{
+    confidence: number;
+    labelsSuggested: string[];
+    reproEligible: boolean;
+    summary: string;
+  }> = {},
+) {
   return {
     schema_version: "rb.triage.v1" as const,
     run_id: runId,
@@ -49,7 +52,8 @@ function buildTriageArtifact(runId: string, overrides: Partial<{
     },
     repro_eligible: overrides.reproEligible ?? true,
     summary:
-      overrides.summary ?? "The parser crashes on empty YAML input with a ParseError.",
+      overrides.summary ??
+      "The parser crashes on empty YAML input with a ParseError.",
   };
 }
 
@@ -134,7 +138,9 @@ function buildReproRun() {
   };
 }
 
-function buildVerification(verdict: "reproduced" | "not_reproduced" = "reproduced") {
+function buildVerification(
+  verdict: "reproduced" | "not_reproduced" = "reproduced",
+) {
   return {
     schemaVersion: "rb.verification.v1" as const,
     verdict,
@@ -150,8 +156,7 @@ function buildVerification(verdict: "reproduced" | "not_reproduced" = "reproduce
     },
     evidence: {
       failingCmd: "pnpm test",
-      exitCode:
-        verdict === "reproduced" ? BigInt(1) : BigInt(0),
+      exitCode: verdict === "reproduced" ? BigInt(1) : BigInt(0),
       stderrSha256: "b".repeat(64),
     },
     notes: "Verification notes.",

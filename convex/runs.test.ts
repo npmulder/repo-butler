@@ -8,7 +8,7 @@ import {
   seedRepo,
   seedRun,
   seedUser,
-} from "./testHelpers";
+} from "../test/convex/testHelpers";
 
 describe("runs.create", () => {
   it("generates a runId and stores a pending run", async () => {
@@ -16,7 +16,9 @@ describe("runs.create", () => {
     const { userId } = await seedUser(t);
     const installationId = await seedInstallation(t, userId);
     const { repoId, fullName } = await seedRepo(t, { userId, installationId });
-    const issueId = await seedIssue(t, repoId, { githubIssueNumber: BigInt(42) });
+    const issueId = await seedIssue(t, repoId, {
+      githubIssueNumber: BigInt(42),
+    });
 
     const runId = await t.mutation(internal.runs.create, {
       issueId,
@@ -119,8 +121,12 @@ describe("runs queries", () => {
     const { userId, asUser } = await seedUser(t);
     const installationId = await seedInstallation(t, userId);
     const { repoId } = await seedRepo(t, { userId, installationId });
-    const issueOneId = await seedIssue(t, repoId, { githubIssueNumber: BigInt(1) });
-    const issueTwoId = await seedIssue(t, repoId, { githubIssueNumber: BigInt(2) });
+    const issueOneId = await seedIssue(t, repoId, {
+      githubIssueNumber: BigInt(1),
+    });
+    const issueTwoId = await seedIssue(t, repoId, {
+      githubIssueNumber: BigInt(2),
+    });
     const olderRunId = await seedRun(t, {
       userId,
       repoId,
@@ -137,7 +143,9 @@ describe("runs queries", () => {
     });
 
     const byId = await asUser.query(api.runs.getByRunId, { runId: "run_new" });
-    const recent = await asUser.query(api.runs.listRecent, { limit: BigInt(2) });
+    const recent = await asUser.query(api.runs.listRecent, {
+      limit: BigInt(2),
+    });
     const byRepo = await asUser.query(api.runs.listByRepo, { repoId });
 
     expect(byId?._id).toBe(newerRunId);

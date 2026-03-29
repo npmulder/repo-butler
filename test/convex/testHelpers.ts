@@ -1,9 +1,9 @@
 import { convexTest } from "convex-test";
 
-import type { Doc, Id } from "./_generated/dataModel";
-import { api } from "./_generated/api";
-import { modules } from "./test.setup";
-import schema from "./schema";
+import { api } from "../../convex/_generated/api";
+import type { Doc, Id } from "../../convex/_generated/dataModel";
+import { modules } from "./modules";
+import schema from "../../convex/schema";
 
 export function createTestConvex() {
   return convexTest(schema, modules);
