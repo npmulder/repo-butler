@@ -1,6 +1,11 @@
 export type SandboxNetworkPolicy = "disabled" | "enabled";
-export type SandboxEnvironmentStrategy = "devcontainer" | "dockerfile" | "bootstrap";
+export type SandboxEnvironmentStrategy =
+  | "devcontainer"
+  | "dockerfile"
+  | "synth_dockerfile"
+  | "bootstrap";
 export type SandboxStatus = "success" | "failure" | "error" | "timeout";
+export type SandboxFailureType = "env_setup" | "repro_failure";
 
 export interface SandboxCommand {
   name: string;
@@ -17,10 +22,12 @@ export interface SandboxRequest {
     sha: string;
   };
   environment: {
-    strategy: SandboxEnvironmentStrategy;
+    strategy?: SandboxEnvironmentStrategy;
     dockerfilePath?: string;
     devcontainerPath?: string;
     bootstrapCommands?: string[];
+    languageHint?: string;
+    runtimeHint?: string;
   };
   commands: SandboxCommand[];
   policy: {
@@ -46,6 +53,16 @@ export interface StepResult {
 export interface SandboxResult {
   runId: string;
   status: SandboxStatus;
+  failureType?: SandboxFailureType;
+  environmentStrategy?: {
+    preferred: SandboxEnvironmentStrategy;
+    detected: SandboxEnvironmentStrategy;
+    fallbacks: SandboxEnvironmentStrategy[];
+    notes: string;
+    imageUsed?: string;
+    attempted?: SandboxEnvironmentStrategy;
+    failedAt?: string;
+  };
   sandbox: {
     kind: "docker";
     imageDigest: string;
@@ -54,7 +71,12 @@ export interface SandboxResult {
   };
   steps: StepResult[];
   failureObserved?: {
-    kind: "exception" | "assertion" | "nonzero_exit" | "snapshot_diff" | "timeout";
+    kind:
+      | "exception"
+      | "assertion"
+      | "nonzero_exit"
+      | "snapshot_diff"
+      | "timeout";
     matchAny?: string[];
     traceExcerptSha256?: string;
   };

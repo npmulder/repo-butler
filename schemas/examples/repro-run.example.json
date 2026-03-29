@@ -30,6 +30,12 @@
     "match_any": ["Validation failed", "must have required property"],
     "trace_excerpt_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
   },
+  "failure_type": "repro_failure",
+  "environment_strategy": {
+    "attempted": "dockerfile",
+    "detected": "dockerfile",
+    "image_used": "rb-repro-example"
+  },
   "artifact_content": "pnpm validate:schemas",
   "duration_ms": 5700
 }

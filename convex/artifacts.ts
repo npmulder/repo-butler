@@ -3,7 +3,11 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
-import { requireCurrentUser, requireLoadedRunAccess, requireRunAccess } from "./lib/auth";
+import {
+  requireCurrentUser,
+  requireLoadedRunAccess,
+  requireRunAccess,
+} from "./lib/auth";
 
 const reproContractSchemaVersionValidator = v.literal("rb.repro_contract.v1");
 const reproPlanSchemaVersionValidator = v.literal("rb.repro_plan.v1");
@@ -110,10 +114,19 @@ const baseRevisionValidator = v.object({
   sha: v.string(),
 });
 
+const environmentStrategyNameValidator = v.union(
+  v.literal("devcontainer"),
+  v.literal("dockerfile"),
+  v.literal("synth_dockerfile"),
+  v.literal("bootstrap"),
+);
+
 const environmentStrategyValidator = v.object({
-  preferred: v.string(),
-  fallbacks: v.array(v.string()),
+  preferred: environmentStrategyNameValidator,
+  detected: environmentStrategyNameValidator,
+  fallbacks: v.array(environmentStrategyNameValidator),
   notes: v.optional(v.string()),
+  imageUsed: v.optional(v.string()),
 });
 
 const planCommandValidator = v.object({
@@ -147,6 +160,19 @@ const failureObservedValidator = v.object({
   kind: v.string(),
   matchAny: v.optional(v.array(v.string())),
   traceExcerptSha256: v.optional(v.string()),
+});
+
+const reproRunFailureTypeValidator = v.union(
+  v.literal("env_setup"),
+  v.literal("repro_failure"),
+);
+
+const reproRunEnvironmentStrategyValidator = v.object({
+  attempted: environmentStrategyNameValidator,
+  detected: v.optional(environmentStrategyNameValidator),
+  failedAt: v.optional(v.string()),
+  notes: v.optional(v.string()),
+  imageUsed: v.optional(v.string()),
 });
 
 const verdictValidator = v.union(
@@ -260,7 +286,8 @@ export const storeTriage = internalMutation({
         : {}),
       expectedFailureSignal: {
         kind: artifact.repro_hypothesis.expected_failure_signal.kind,
-        ...(artifact.repro_hypothesis.expected_failure_signal.match_any !== undefined
+        ...(artifact.repro_hypothesis.expected_failure_signal.match_any !==
+        undefined
           ? {
               matchAny:
                 artifact.repro_hypothesis.expected_failure_signal.match_any,
@@ -386,6 +413,8 @@ export const storeReproRun = mutation({
     sandbox: sandboxValidator,
     steps: v.array(stepResultValidator),
     failureObserved: v.optional(failureObservedValidator),
+    failureType: v.optional(reproRunFailureTypeValidator),
+    environmentStrategy: v.optional(reproRunEnvironmentStrategyValidator),
     artifactContent: v.optional(v.string()),
     logStorageId: v.optional(v.id("_storage")),
     durationMs: v.int64(),
@@ -395,7 +424,9 @@ export const storeReproRun = mutation({
 
     const existing = await ctx.db
       .query("reproRuns")
-      .withIndex("by_run", (q) => q.eq("runId", args.runId).eq("iteration", args.iteration))
+      .withIndex("by_run", (q) =>
+        q.eq("runId", args.runId).eq("iteration", args.iteration),
+      )
       .unique();
     const createdAt = existing?.createdAt ?? Date.now();
     const doc = {
@@ -404,9 +435,21 @@ export const storeReproRun = mutation({
       iteration: args.iteration,
       sandbox: args.sandbox,
       steps: args.steps,
-      ...(args.failureObserved !== undefined ? { failureObserved: args.failureObserved } : {}),
-      ...(args.artifactContent !== undefined ? { artifactContent: args.artifactContent } : {}),
-      ...(args.logStorageId !== undefined ? { logStorageId: args.logStorageId } : {}),
+      ...(args.failureObserved !== undefined
+        ? { failureObserved: args.failureObserved }
+        : {}),
+      ...(args.failureType !== undefined
+        ? { failureType: args.failureType }
+        : {}),
+      ...(args.environmentStrategy !== undefined
+        ? { environmentStrategy: args.environmentStrategy }
+        : {}),
+      ...(args.artifactContent !== undefined
+        ? { artifactContent: args.artifactContent }
+        : {}),
+      ...(args.logStorageId !== undefined
+        ? { logStorageId: args.logStorageId }
+        : {}),
       durationMs: args.durationMs,
       createdAt,
     };
@@ -447,7 +490,9 @@ export const storeVerification = mutation({
       policyChecks: args.policyChecks,
       evidence: args.evidence,
       ...(args.notes !== undefined ? { notes: args.notes } : {}),
-      ...(args.logStorageId !== undefined ? { logStorageId: args.logStorageId } : {}),
+      ...(args.logStorageId !== undefined
+        ? { logStorageId: args.logStorageId }
+        : {}),
       createdAt,
     };
 
@@ -478,30 +523,31 @@ export const getRunBundle = query({
 
     await requireLoadedRunAccess(ctx, user, run);
 
-    const [triage, contract, plan, reproRuns, verification, issue] = await Promise.all([
-      ctx.db
-        .query("triageResults")
-        .withIndex("by_run", (q) => q.eq("runId", args.runId))
-        .unique(),
-      ctx.db
-        .query("reproContracts")
-        .withIndex("by_run", (q) => q.eq("runId", args.runId))
-        .unique(),
-      ctx.db
-        .query("reproPlans")
-        .withIndex("by_run", (q) => q.eq("runId", args.runId))
-        .unique(),
-      ctx.db
-        .query("reproRuns")
-        .withIndex("by_run", (q) => q.eq("runId", args.runId))
-        .order("asc")
-        .collect(),
-      ctx.db
-        .query("verifications")
-        .withIndex("by_run", (q) => q.eq("runId", args.runId))
-        .unique(),
-      ctx.db.get(run.issueId),
-    ]);
+    const [triage, contract, plan, reproRuns, verification, issue] =
+      await Promise.all([
+        ctx.db
+          .query("triageResults")
+          .withIndex("by_run", (q) => q.eq("runId", args.runId))
+          .unique(),
+        ctx.db
+          .query("reproContracts")
+          .withIndex("by_run", (q) => q.eq("runId", args.runId))
+          .unique(),
+        ctx.db
+          .query("reproPlans")
+          .withIndex("by_run", (q) => q.eq("runId", args.runId))
+          .unique(),
+        ctx.db
+          .query("reproRuns")
+          .withIndex("by_run", (q) => q.eq("runId", args.runId))
+          .order("asc")
+          .collect(),
+        ctx.db
+          .query("verifications")
+          .withIndex("by_run", (q) => q.eq("runId", args.runId))
+          .unique(),
+        ctx.db.get(run.issueId),
+      ]);
 
     return {
       run,

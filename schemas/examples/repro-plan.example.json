@@ -6,9 +6,11 @@
     "sha": "6f914ae9d39dc7eeceb71ed7c99bcda65d7f751b"
   },
   "environment_strategy": {
-    "preferred": "manual_bootstrap",
-    "fallbacks": ["dockerfile", "repo2run_synth"],
-    "notes": "The repo currently ships a Next.js scaffold without a devcontainer or Dockerfile."
+    "preferred": "dockerfile",
+    "detected": "dockerfile",
+    "fallbacks": ["synth_dockerfile", "bootstrap"],
+    "notes": "The repository Dockerfile is the most direct reproduction environment.",
+    "image_used": "rb-repro-example"
   },
   "commands": [
     {
