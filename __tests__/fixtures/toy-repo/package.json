@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "tsx --test tests/parser.test.ts tests/passing.test.ts",
-    "test:fail": "tsx --test tests/parser.test.ts",
-    "test:pass": "tsx --test tests/passing.test.ts"
+    "test": "tsx --test tests/parser.repro.ts tests/passing.repro.ts",
+    "test:fail": "tsx --test tests/parser.repro.ts",
+    "test:pass": "tsx --test tests/passing.repro.ts"
   }
 }
