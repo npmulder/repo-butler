@@ -1,0 +1,18 @@
+services:
+  sandbox-worker:
+    build:
+      context: ..
+      dockerfile: worker/Dockerfile.base
+    command: >
+      bash -lc "corepack enable &&
+      pnpm install &&
+      pnpm exec tsx worker/server.ts"
+    environment:
+      SANDBOX_WORKER_PORT: 3001
+      SANDBOX_WORKER_SECRET: dev-sandbox-secret
+    ports:
+      - "3001:3001"
+    user: root
+    volumes:
+      - ..:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
