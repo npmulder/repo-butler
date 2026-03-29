@@ -1,5 +1,7 @@
 # Repo Butler
 
+[![CI](https://github.com/npmulder/repo-butler/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/npmulder/repo-butler/actions/workflows/ci.yml)
+
 Repo Butler is an AI-powered issue triage and automated bug reproduction tool for open-source maintainers. It is built around a Planner → Generator → Evaluator pipeline:
 
 - Triager classifies issue severity, category, label suggestions, and a reproduction hypothesis.
@@ -26,7 +28,7 @@ cp .env.example .env.local
 ```
 
 3. Select the shared Convex deployment (`dev:handsome-raven-359`) and populate
-the generated Convex env vars:
+   the generated Convex env vars:
 
 ```bash
 pnpm exec convex dev --once --configure existing
@@ -86,7 +88,10 @@ pnpm dev
 - GitHub Actions secret `CONVEX_DEPLOYMENT` should match the shared dev
   deployment for any non-interactive Convex CLI tasks that need deployment
   selection.
-- `.github/workflows/convex-deploy.yml` deploys to Convex when `CONVEX_DEPLOY_KEY` is present.
+- `.github/workflows/convex-deploy.yml` deploys to Convex when
+  `CONVEX_DEPLOY_KEY`, `WORKOS_CLIENT_ID`, and `WORKOS_API_KEY` are present.
+  The WorkOS credentials are required because `convex.json` enables AuthKit
+  auto-configuration during non-interactive deploys.
 - `.github/workflows/deploy-cloudflare.yml` builds the Next.js app with
   `@opennextjs/cloudflare`, deploys the `preview` Worker environment for
   pull requests to `main`, and deploys production on pushes to `main`.

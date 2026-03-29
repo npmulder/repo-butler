@@ -5,23 +5,56 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: convex-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v5
-        with:
-          version: 10.6.5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "20"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: ./.github/actions/setup-repo
       - name: Deploy to Convex
-        if: ${{ env.CONVEX_DEPLOY_KEY != '' }}
-        run: pnpm exec convex deploy
+        id: deploy
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          WORKOS_CLIENT_ID: ${{ secrets.WORKOS_CLIENT_ID }}
+          WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "${CONVEX_DEPLOY_KEY}" ] || missing+=("CONVEX_DEPLOY_KEY")
+          [ -n "${WORKOS_CLIENT_ID}" ] || missing+=("WORKOS_CLIENT_ID")
+          [ -n "${WORKOS_API_KEY}" ] || missing+=("WORKOS_API_KEY")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'deployment_state=skipped\n' >> "$GITHUB_OUTPUT"
+            printf 'missing_secrets=%s\n' "${missing[*]}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pnpm exec convex deploy
+          printf 'deployment_state=deployed\n' >> "$GITHUB_OUTPUT"
+      - name: Write deploy summary
+        if: always()
+        env:
+          DEPLOYMENT_STATE: ${{ steps.deploy.outputs.deployment_state }}
+          MISSING_SECRETS: ${{ steps.deploy.outputs.missing_secrets }}
+        run: |
+          {
+            echo "## Convex Deploy"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Deploy step | ${{ steps.deploy.outcome }} |"
+            echo "| Deployment state | ${DEPLOYMENT_STATE:-failed} |"
+            if [ -n "${MISSING_SECRETS}" ]; then
+              echo
+              echo "Skipped because required secrets are not configured: ${MISSING_SECRETS}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
