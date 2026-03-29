@@ -42,6 +42,8 @@ function getLlmProvider(): LlmProvider {
   throw new Error(`Unsupported LLM_PROVIDER: ${process.env.LLM_PROVIDER}`);
 }
 
+const llmProvider = getLlmProvider();
+
 function normalizeAppUrl(candidate: string | undefined): string | null {
   if (!candidate) {
     return null;
@@ -75,9 +77,7 @@ function getRepoButlerAppUrl(): string {
 }
 
 function getAnthropicClientConfig(): ClientOptions {
-  const provider = getLlmProvider();
-
-  if (provider === "openrouter") {
+  if (llmProvider === "openrouter") {
     return {
       apiKey: getRequiredEnvVar("OPENROUTER_API_KEY"),
       baseURL: OPENROUTER_BASE_URL,
@@ -107,20 +107,14 @@ function mapModelForOpenRouter(
   return OPENROUTER_MODEL_MAP[model];
 }
 
-export const MODELS = {
-  triage:
-    getLlmProvider() === "openrouter"
-      ? mapModelForOpenRouter(DIRECT_MODELS.triage)
-      : DIRECT_MODELS.triage,
-  reproduce:
-    getLlmProvider() === "openrouter"
-      ? mapModelForOpenRouter(DIRECT_MODELS.reproduce)
-      : DIRECT_MODELS.reproduce,
-  verify:
-    getLlmProvider() === "openrouter"
-      ? mapModelForOpenRouter(DIRECT_MODELS.verify)
-      : DIRECT_MODELS.verify,
-} as const;
+export const MODELS =
+  llmProvider === "openrouter"
+    ? {
+        triage: mapModelForOpenRouter(DIRECT_MODELS.triage),
+        reproduce: mapModelForOpenRouter(DIRECT_MODELS.reproduce),
+        verify: mapModelForOpenRouter(DIRECT_MODELS.verify),
+      }
+    : DIRECT_MODELS;
 
 export const DEFAULT_MAX_TOKENS = 4096;
 
