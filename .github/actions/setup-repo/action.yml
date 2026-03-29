@@ -36,6 +36,21 @@ runs:
         INSTALL_RETRIES: ${{ inputs.install-retries }}
       run: |
         set +e
+
+        if [ -z "$INSTALL_RETRIES" ]; then
+          INSTALL_RETRIES=3
+        fi
+
+        if ! [[ "$INSTALL_RETRIES" =~ ^[0-9]+$ ]]; then
+          echo "Invalid value for INSTALL_RETRIES: '$INSTALL_RETRIES'. It must be an integer >= 1." >&2
+          exit 1
+        fi
+
+        if [ "$INSTALL_RETRIES" -lt 1 ]; then
+          echo "INSTALL_RETRIES must be at least 1, but was '$INSTALL_RETRIES'." >&2
+          exit 1
+        fi
+
         attempt=1
         while [ "$attempt" -le "$INSTALL_RETRIES" ]; do
           bash -lc "$INSTALL_COMMAND"
