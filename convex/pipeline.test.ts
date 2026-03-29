@@ -35,6 +35,14 @@ const anthropicState = vi.hoisted(() => {
   };
 });
 
+const sandboxState = vi.hoisted(() => ({
+  execute: vi.fn(),
+}));
+
+const githubState = vi.hoisted(() => ({
+  getBranch: vi.fn(),
+}));
+
 vi.mock("@anthropic-ai/sdk", () => {
   return {
     APIError: anthropicState.MockAPIError,
@@ -61,7 +69,26 @@ vi.mock("../lib/claude", () => {
   };
 });
 
+vi.mock("../lib/sandbox-client", () => {
+  return {
+    executeSandbox: sandboxState.execute,
+  };
+});
+
+vi.mock("../lib/github", () => {
+  return {
+    getInstallationOctokit: vi.fn(async () => ({
+      rest: {
+        repos: {
+          getBranch: githubState.getBranch,
+        },
+      },
+    })),
+  };
+});
+
 import { internal } from "./_generated/api";
+import { sampleTriageArtifacts } from "../__tests__/fixtures/sample-triage";
 import {
   createTestConvex,
   seedInstallation,
@@ -70,6 +97,7 @@ import {
   seedRun,
   seedUser,
 } from "./testHelpers";
+import type { ReproArtifactToolOutput, ReproPlanToolOutput } from "../lib/repro-parser";
 
 function buildClaudeResponse({
   reproEligible = true,
@@ -131,6 +159,159 @@ function buildClaudeResponse({
   };
 }
 
+function buildReproPlanToolOutput(): ReproPlanToolOutput {
+  return {
+    base_revision: {
+      ref: "refs/heads/main",
+    },
+    environment_strategy: {
+      preferred: "dockerfile",
+      notes: "Prefer the repository Dockerfile.",
+    },
+    commands: [
+      {
+        cmd: "npm ci",
+      },
+      {
+        cwd: "tests",
+        cmd: "npx vitest run repro-issue-42.test.ts",
+      },
+    ],
+    artifact: {
+      type: "vitest_test",
+      path: "tests/repro-issue-42.test.ts",
+      entrypoint: "repro-issue-42",
+    },
+  };
+}
+
+function buildReproArtifactToolOutput(
+  overrides: Partial<ReproArtifactToolOutput> = {},
+): ReproArtifactToolOutput {
+  return {
+    file_path: "tests/repro-issue-42.test.ts",
+    content: [
+      'import { describe, expect, it } from "vitest";',
+      "",
+      'describe("repro", () => {',
+      '  it("fails on empty YAML", () => {',
+      '    throw new Error("ParseError: unexpected end of input");',
+      "  });",
+      "});",
+    ].join("\n"),
+    language: "typescript",
+    ...overrides,
+  };
+}
+
+function buildReproClaudeResponse({
+  plan = buildReproPlanToolOutput(),
+  artifact = buildReproArtifactToolOutput(),
+}: {
+  plan?: ReproPlanToolOutput;
+  artifact?: ReproArtifactToolOutput;
+} = {}) {
+  return {
+    id: "msg_repro_123",
+    container: null,
+    content: [
+      { type: "text", text: "Submitting reproduction artifacts." },
+      {
+        type: "tool_use",
+        id: "toolu_repro_plan",
+        name: "submit_repro_plan",
+        input: plan,
+      },
+      {
+        type: "tool_use",
+        id: "toolu_repro_artifact",
+        name: "submit_repro_artifact",
+        input: artifact,
+      },
+    ],
+    model: "claude-sonnet-4-20250514",
+    role: "assistant",
+    stop_reason: "end_turn",
+    stop_sequence: null,
+    type: "message",
+    usage: {
+      cache_creation: null,
+      cache_creation_input_tokens: null,
+      cache_read_input_tokens: null,
+      inference_geo: null,
+      input_tokens: 512,
+      output_tokens: 256,
+      server_tool_use: null,
+    },
+  };
+}
+
+function buildSandboxResult(
+  overrides: Partial<{
+    status: "success" | "failure" | "error" | "timeout";
+    exitCode: number;
+    stderrTail: string;
+    stdoutTail: string;
+    failureType: "env_setup" | "repro_failure";
+  }> = {},
+) {
+  const status = overrides.status ?? "failure";
+  const exitCode = overrides.exitCode ?? 1;
+
+  return {
+    runId: "run_pipeline",
+    status,
+    ...(status === "success"
+      ? {}
+      : { failureType: overrides.failureType ?? "repro_failure" }),
+    sandbox: {
+      kind: "docker" as const,
+      imageDigest: "sha256:abc123",
+      network: "disabled" as const,
+      uid: 1000,
+    },
+    steps: [
+      {
+        name: "run_test",
+        cmd: "npx vitest run repro-issue-42.test.ts",
+        exitCode,
+        stdoutSha256: "a".repeat(64),
+        stderrSha256: "b".repeat(64),
+        durationMs: 1234,
+        stdoutTail: overrides.stdoutTail ?? "",
+        stderrTail:
+          overrides.stderrTail ?? "ParseError: unexpected end of input",
+      },
+    ],
+    ...(status === "success"
+      ? {}
+      : {
+          failureObserved:
+            status === "timeout"
+              ? {
+                  kind: "timeout" as const,
+                  traceExcerptSha256: "c".repeat(64),
+                }
+              : {
+                  kind: "exception" as const,
+                  matchAny: ["ParseError"],
+                  traceExcerptSha256: "c".repeat(64),
+                },
+        }),
+    environmentStrategy: {
+      preferred: "dockerfile" as const,
+      detected: "dockerfile" as const,
+      fallbacks: ["synth_dockerfile", "bootstrap"] as Array<
+        "synth_dockerfile" | "bootstrap"
+      >,
+      notes: "Found Dockerfile at Dockerfile",
+      attempted: "dockerfile" as const,
+      imageUsed: "rb-sandbox:test",
+    },
+    totalDurationMs: 1234,
+  };
+}
+
 function buildOpenRouterError({
   status,
   message,
@@ -177,11 +358,37 @@ async function setupPipelineFixture() {
   return { t, repoId, issueId, runId };
 }
 
+async function seedTriageResult(
+  t: ReturnType<typeof createTestConvex>,
+  runId: Awaited<ReturnType<typeof setupPipelineFixture>>["runId"],
+) {
+  await t.mutation(internal.artifacts.storeTriage, {
+    runId,
+    artifact: {
+      ...sampleTriageArtifacts.typescriptVitestBug,
+      run_id: "run_pipeline",
+    },
+    tokensUsed: {
+      input: 111,
+      output: 55,
+    },
+  });
+}
+
 beforeEach(() => {
   anthropicState.create.mockReset();
   anthropicState.getRequestOptions.mockReset();
   anthropicState.getRequestOptions.mockReturnValue(undefined);
   anthropicState.provider = "anthropic";
+  sandboxState.execute.mockReset();
+  githubState.getBranch.mockReset();
+  githubState.getBranch.mockResolvedValue({
+    data: {
+      commit: {
+        sha: "deadbee1234567890deadbee1234567890deadb",
+      },
+    },
+  });
   vi.useRealTimers();
 });
 
@@ -416,5 +623,118 @@ describe("pipeline.runTriage", () => {
       status: "failed",
       errorMessage: "Claude API error (400): Bad request",
     });
+  });
+});
+
+describe("pipeline.runReproduce", () => {
+  it("refines after runtime feedback and completes when the expected failure appears", async () => {
+    anthropicState.create
+      .mockResolvedValueOnce(buildReproClaudeResponse())
+      .mockResolvedValueOnce(
+        buildReproClaudeResponse({
+          artifact: buildReproArtifactToolOutput({
+            content: [
+              'import { describe, it } from "vitest";',
+              "",
+              'describe("repro", () => {',
+              '  it("captures the parser crash", () => {',
+              '    throw new Error("ParseError: unexpected end of input");',
+              "  });",
+              "});",
+            ].join("\n"),
+          }),
+        }),
+      );
+    sandboxState.execute
+      .mockResolvedValueOnce(
+        buildSandboxResult({
+          stderrTail: "ModuleNotFoundError: parser",
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildSandboxResult({
+          stderrTail: "ParseError: unexpected end of input",
+        }),
+      );
+    const { t, runId } = await setupPipelineFixture();
+    await seedTriageResult(t, runId);
+
+    await t.action(internal.pipeline.runReproduce, { runId });
+
+    const result = await t.run(async (ctx) => {
+      return {
+        run: await ctx.db.get(runId),
+        plan: await ctx.db
+          .query("reproPlans")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .unique(),
+        reproRuns: await ctx.db
+          .query("reproRuns")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .collect(),
+      };
+    });
+
+    expect(githubState.getBranch).toHaveBeenCalledWith({
+      owner: "repo-butler",
+      repo: "example",
+      branch: "main",
+    });
+    expect(anthropicState.create).toHaveBeenCalledTimes(2);
+    expect(sandboxState.execute).toHaveBeenCalledTimes(2);
+    expect(
+      anthropicState.create.mock.calls[1]?.[0]?.messages[0]?.content,
+    ).toContain("ModuleNotFoundError: parser");
+    expect(
+      anthropicState.create.mock.calls[1]?.[0]?.messages[0]?.content,
+    ).toContain("Import error - missing module or incorrect path");
+    expect(result.run).toMatchObject({
+      status: "completed",
+      verdict: "reproduced",
+    });
+    expect(result.plan).toMatchObject({
+      schemaVersion: "rb.repro_plan.v1",
+      baseRevision: {
+        sha: "deadbee1234567890deadbee1234567890deadb",
+      },
+    });
+    expect(result.reproRuns).toHaveLength(2);
+    expect(result.reproRuns[0]?.iteration).toBe(BigInt(1));
+    expect(result.reproRuns[1]?.iteration).toBe(BigInt(2));
+  });
+
+  it("marks the run as budget exhausted after six unsuccessful attempts", async () => {
+    anthropicState.create.mockResolvedValue(buildReproClaudeResponse());
+    sandboxState.execute.mockResolvedValue(
+      buildSandboxResult({
+        status: "success",
+        exitCode: 0,
+        stderrTail: "",
+        stdoutTail: "tests passed",
+      }),
+    );
+    const { t, runId } = await setupPipelineFixture();
+    await seedTriageResult(t, runId);
+
+    await t.action(internal.pipeline.runReproduce, { runId });
+
+    const result = await t.run(async (ctx) => {
+      return {
+        run: await ctx.db.get(runId),
+        reproRuns: await ctx.db
+          .query("reproRuns")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .collect(),
+      };
+    });
+
+    expect(anthropicState.create).toHaveBeenCalledTimes(6);
+    expect(sandboxState.execute).toHaveBeenCalledTimes(6);
+    expect(result.run).toMatchObject({
+      status: "failed",
+      verdict: "budget_exhausted",
+      errorMessage: "Failed to reproduce after 6 iterations",
+    });
+    expect(result.reproRuns).toHaveLength(6);
   });
 });

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import {
   internalQuery,
   mutation,
@@ -337,6 +338,10 @@ async function applyApproval(
 
   await ctx.db.patch(runId, outcome.patch);
 
+  if (action === "approve") {
+    await ctx.scheduler.runAfter(0, internal.pipeline.runReproduce, { runId });
+  }
+
   return { success: true as const };
 }
 
@@ -360,6 +365,12 @@ export const processApproval = mutation({
     }
 
     await ctx.db.patch(run._id, outcome.patch);
+
+    if (args.action === "approve") {
+      await ctx.scheduler.runAfter(0, internal.pipeline.runReproduce, {
+        runId: run._id,
+      });
+    }
 
     return {
       approvalDecision:

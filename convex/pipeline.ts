@@ -20,6 +20,7 @@ import {
   type LlmProvider,
   type TriageInput,
 } from "../lib/claude";
+import { getInstallationOctokit } from "../lib/github";
 import {
   TRIAGE_SYSTEM_PROMPT,
   TRIAGE_TOOL_DEFINITION,
@@ -27,10 +28,34 @@ import {
   buildTriageUserPrompt,
 } from "../lib/prompts/triage";
 import {
+  MAX_REPRODUCTION_ITERATIONS,
+  REPRO_ARTIFACT_TOOL_DEFINITION,
+  REPRO_ARTIFACT_TOOL_NAME,
+  REPRODUCER_SYSTEM_PROMPT,
+  REPRO_PLAN_TOOL_DEFINITION,
+  REPRO_PLAN_TOOL_NAME,
+  buildReproducerUserPrompt,
+} from "../lib/prompts/reproducer";
+import {
   buildTriageArtifact,
   extractTriageFromResponse,
   validateTriageArtifact,
 } from "../lib/triage-parser";
+import {
+  buildArtifactWriteCommand,
+  buildReproPlanArtifact,
+  buildReproRunArtifact,
+  buildReproducerFeedback,
+  extractReproArtifactFromResponse,
+  extractReproPlanFromResponse,
+  findRelevantReproStep,
+  matchesExpectedFailureSignal,
+  reproPlanArtifactToMutationArgs,
+  reproRunArtifactToMutationArgs,
+  validateReproPlanArtifact,
+  validateReproRunArtifact,
+} from "../lib/repro-parser";
+import { executeSandbox } from "../lib/sandbox-client";
 
 const RETRY_DELAYS_MS = [1000, 3000, 5000] as const;
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
@@ -242,30 +267,15 @@ function buildTriageInput(
   };
 }
 
-async function requestTriageAssessment(input: TriageInput) {
+async function requestClaudeMessage(
+  requestBody: MessageCreateParamsNonStreaming,
+  logLabel: string,
+) {
   const client = getAnthropicClient();
   const llmProvider = getLlmProvider();
 
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
     try {
-      const requestBody: MessageCreateParamsNonStreaming = {
-        model: MODELS.triage,
-        max_tokens: DEFAULT_MAX_TOKENS,
-        system: TRIAGE_SYSTEM_PROMPT,
-        tools: [TRIAGE_TOOL_DEFINITION],
-        tool_choice: {
-          type: "tool",
-          name: TRIAGE_TOOL_NAME,
-          disable_parallel_tool_use: true,
-        },
-        messages: [
-          {
-            role: "user",
-            content: buildTriageUserPrompt(input),
-          },
-        ],
-      };
-
       return await client.messages.create(
         requestBody,
         getAnthropicRequestOptions(requestBody),
@@ -279,7 +289,7 @@ async function requestTriageAssessment(input: TriageInput) {
 
       const delayMs = RETRY_DELAYS_MS[attempt];
       console.warn(
-        `[pipeline] Retrying triage request after ${delayMs}ms (attempt ${attempt + 1})`,
+        `[pipeline] Retrying ${logLabel} request after ${delayMs}ms (attempt ${attempt + 1})`,
         {
           attempt: attempt + 1,
           delayMs,
@@ -290,13 +300,52 @@ async function requestTriageAssessment(input: TriageInput) {
     }
   }
 
-  throw new Error("Triage request exited without a Claude response");
+  throw new Error(`${logLabel} request exited without a Claude response`);
+}
+
+async function requestTriageAssessment(input: TriageInput) {
+  const requestBody: MessageCreateParamsNonStreaming = {
+    model: MODELS.triage,
+    max_tokens: DEFAULT_MAX_TOKENS,
+    system: TRIAGE_SYSTEM_PROMPT,
+    tools: [TRIAGE_TOOL_DEFINITION],
+    tool_choice: {
+      type: "tool",
+      name: TRIAGE_TOOL_NAME,
+      disable_parallel_tool_use: true,
+    },
+    messages: [
+      {
+        role: "user",
+        content: buildTriageUserPrompt(input),
+      },
+    ],
+  };
+
+  return await requestClaudeMessage(requestBody, "triage");
+}
+
+async function requestReproductionAttempt(userPrompt: string) {
+  const requestBody: MessageCreateParamsNonStreaming = {
+    model: MODELS.reproduce,
+    max_tokens: 8192,
+    system: REPRODUCER_SYSTEM_PROMPT,
+    tools: [REPRO_PLAN_TOOL_DEFINITION, REPRO_ARTIFACT_TOOL_DEFINITION],
+    messages: [
+      {
+        role: "user",
+        content: userPrompt,
+      },
+    ],
+  };
+
+  return await requestClaudeMessage(requestBody, "reproducer");
 }
 
 async function loadRunContext(
   ctx: ActionCtx,
   runId: Id<"runs">,
-  issueId: Id<"issues">,
+  issueId?: Id<"issues">,
 ): Promise<{
   run: Doc<"runs">;
   issue: Doc<"issues">;
@@ -309,12 +358,12 @@ async function loadRunContext(
     throw new Error(`Run ${runId} not found`);
   }
 
-  if (run.issueId !== issueId) {
+  if (issueId !== undefined && run.issueId !== issueId) {
     throw new Error(`Run ${runId} does not belong to issue ${issueId}`);
   }
 
   const issue: Doc<"issues"> | null = await ctx.runQuery(internal.issues.getById, {
-    issueId,
+    issueId: run.issueId,
   });
   if (!issue) {
     throw new Error(`Issue ${issueId} not found`);
@@ -332,6 +381,73 @@ async function loadRunContext(
   }
 
   return { run, issue, repo };
+}
+
+async function resolveBaseRevision(
+  ctx: ActionCtx,
+  repo: Doc<"repos">,
+): Promise<{ ref: string; sha: string }> {
+  const installation = await ctx.runQuery(internal.githubInstallations.getById, {
+    installationId: repo.installationId,
+  });
+
+  if (!installation) {
+    throw new Error(
+      `GitHub installation ${repo.installationId} not found for repo ${repo.fullName}`,
+    );
+  }
+
+  const octokit = await getInstallationOctokit(Number(installation.installationId));
+  const branch = await octokit.rest.repos.getBranch({
+    owner: repo.owner,
+    repo: repo.name,
+    branch: repo.defaultBranch,
+  });
+
+  return {
+    ref: `refs/heads/${repo.defaultBranch}`,
+    sha: branch.data.commit.sha,
+  };
+}
+
+function normalizeCloneRef(ref: string, defaultBranch: string): string {
+  if (ref.startsWith("refs/heads/")) {
+    return ref.slice("refs/heads/".length);
+  }
+
+  return ref || defaultBranch;
+}
+
+function normalizeLanguageHint(
+  language: string | undefined,
+): string | undefined {
+  return language?.trim().toLowerCase() || undefined;
+}
+
+function normalizeRuntimeHint(
+  runtime: string | undefined,
+): string | undefined {
+  const value = runtime?.trim();
+
+  if (!value) {
+    return undefined;
+  }
+
+  const match = value.match(/\d+(?:\.\d+)?/);
+  return match?.[0] ?? value;
+}
+
+function buildPlannedSandboxCommands(
+  commands: Array<{
+    cwd: string;
+    cmd: string;
+  }>,
+) {
+  return commands.map((command, index) => ({
+    name: index === commands.length - 1 ? "run_test" : `plan_step_${index + 1}`,
+    cmd: command.cmd,
+    cwd: command.cwd,
+  }));
 }
 
 export const runTriage = internalAction({
@@ -400,7 +516,9 @@ export const runTriage = internalAction({
             approvedAt,
             errorMessage: approval.reason,
           });
-          // Reproduction scheduling lands in CV-124.
+          await ctx.scheduler.runAfter(0, internal.pipeline.runReproduce, {
+            runId: args.runId,
+          });
         } else {
           await ctx.runMutation(internal.runs.updateStatus, {
             runId: args.runId,
@@ -430,6 +548,215 @@ export const runTriage = internalAction({
         runId: args.runId,
         status: "failed",
         errorMessage,
+      });
+    }
+
+    return null;
+  },
+});
+
+export const runReproduce = internalAction({
+  args: {
+    runId: v.id("runs"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.runMutation(internal.runs.updateStatus, {
+      runId: args.runId,
+      status: "reproducing",
+    });
+
+    let lastSandboxResult: Awaited<ReturnType<typeof executeSandbox>> | null = null;
+
+    try {
+      const { run, repo } = await loadRunContext(ctx, args.runId);
+      const triageResult = await ctx.runQuery(
+        internal.triageResults.getInternalByRunId,
+        {
+          runId: args.runId,
+        },
+      );
+
+      if (!triageResult?.artifact) {
+        throw new Error(`No triage artifact stored for run ${args.runId}`);
+      }
+
+      const baseRevision = await resolveBaseRevision(ctx, repo);
+      const languageHint = normalizeLanguageHint(
+        triageResult.artifact.repro_hypothesis.environment_assumptions
+          ?.language ?? repo.language,
+      );
+      const runtimeHint = normalizeRuntimeHint(
+        triageResult.artifact.repro_hypothesis.environment_assumptions?.runtime,
+      );
+
+      let planArtifact:
+        | ReturnType<typeof buildReproPlanArtifact>
+        | null = null;
+      let artifactOutput:
+        | ReturnType<typeof extractReproArtifactFromResponse>
+        | null = null;
+      let previousFeedback:
+        | ReturnType<typeof buildReproducerFeedback>
+        | undefined;
+
+      for (
+        let iteration = 1;
+        iteration <= MAX_REPRODUCTION_ITERATIONS;
+        iteration += 1
+      ) {
+        const response = await requestReproductionAttempt(
+          buildReproducerUserPrompt({
+            triage: triageResult.artifact,
+            repoContext: {
+              languages: repo.language
+                ? [repo.language]
+                : languageHint
+                  ? [languageHint]
+                  : [],
+              defaultBranch: repo.defaultBranch,
+            },
+            iteration,
+            ...(previousFeedback ? { previousFeedback } : {}),
+          }),
+        );
+
+        const nextPlanToolOutput = extractReproPlanFromResponse(response);
+
+        if (nextPlanToolOutput) {
+          const nextPlanArtifact = buildReproPlanArtifact({
+            runId: run.runId,
+            toolOutput: nextPlanToolOutput,
+            defaultBaseRevision: baseRevision,
+          });
+          const validation = validateReproPlanArtifact(nextPlanArtifact);
+
+          if (!validation.valid) {
+            throw new Error(
+              `Repro plan artifact failed schema validation: ${validation.errors.join("; ")}`,
+            );
+          }
+
+          planArtifact = nextPlanArtifact;
+          await ctx.runMutation(
+            internal.artifacts.storeReproPlanFromAction,
+            reproPlanArtifactToMutationArgs(args.runId, nextPlanArtifact),
+          );
+        }
+
+        const nextArtifactOutput = extractReproArtifactFromResponse(response);
+
+        if (nextArtifactOutput) {
+          artifactOutput = nextArtifactOutput;
+        }
+
+        if (!planArtifact) {
+          throw new Error(
+            `Claude did not return ${REPRO_PLAN_TOOL_NAME}. Stop reason: ${response.stop_reason}; content blocks: ${response.content
+              .map((block) => block.type)
+              .join(", ")}`,
+          );
+        }
+
+        if (!artifactOutput) {
+          throw new Error(
+            `Claude did not return ${REPRO_ARTIFACT_TOOL_NAME}. Stop reason: ${response.stop_reason}; content blocks: ${response.content
+              .map((block) => block.type)
+              .join(", ")}`,
+          );
+        }
+
+        const plannedCommands = buildPlannedSandboxCommands(planArtifact.commands);
+        const sandboxResult = await executeSandbox({
+          runId: run.runId,
+          repo: {
+            cloneUrl: `https://github.com/${repo.owner}/${repo.name}.git`,
+            ref: normalizeCloneRef(planArtifact.base_revision.ref, repo.defaultBranch),
+            sha: planArtifact.base_revision.sha,
+          },
+          environment: {
+            strategy: planArtifact.environment_strategy.preferred,
+            ...(languageHint ? { languageHint } : {}),
+            ...(runtimeHint ? { runtimeHint } : {}),
+          },
+          commands: [
+            {
+              name: "write_artifact",
+              cmd: buildArtifactWriteCommand(artifactOutput),
+            },
+            ...plannedCommands,
+          ],
+          policy: {
+            network: "disabled",
+            runAsRoot: false,
+            secretsMount: "none",
+            wallClockTimeout: 1200,
+            maxIterations: MAX_REPRODUCTION_ITERATIONS,
+          },
+        });
+
+        lastSandboxResult = sandboxResult;
+
+        const reproRunArtifact = buildReproRunArtifact({
+          runId: run.runId,
+          iteration,
+          sandboxResult,
+          artifactContent: artifactOutput.content,
+        });
+        const reproRunValidation = validateReproRunArtifact(reproRunArtifact);
+
+        if (!reproRunValidation.valid) {
+          throw new Error(
+            `Repro run artifact failed schema validation: ${reproRunValidation.errors.join("; ")}`,
+          );
+        }
+
+        await ctx.runMutation(
+          internal.artifacts.storeReproRunFromAction,
+          reproRunArtifactToMutationArgs(args.runId, reproRunArtifact),
+        );
+
+        const relevantStep = findRelevantReproStep(
+          sandboxResult,
+          plannedCommands.map((command) => command.name),
+        );
+
+        if (
+          matchesExpectedFailureSignal(
+            sandboxResult,
+            relevantStep,
+            triageResult.artifact.repro_hypothesis.expected_failure_signal,
+          )
+        ) {
+          await ctx.runMutation(internal.runs.updateStatus, {
+            runId: args.runId,
+            status: "completed",
+            verdict: "reproduced",
+            errorMessage: `Reproduction succeeded after ${iteration} iteration(s)`,
+          });
+          return null;
+        }
+
+        previousFeedback = buildReproducerFeedback(sandboxResult);
+      }
+
+      await ctx.runMutation(internal.runs.updateStatus, {
+        runId: args.runId,
+        status: "failed",
+        verdict:
+          lastSandboxResult?.failureType === "env_setup"
+            ? "env_setup_failed"
+            : "budget_exhausted",
+        errorMessage: `Failed to reproduce after ${MAX_REPRODUCTION_ITERATIONS} iterations`,
+      });
+    } catch (error) {
+      await ctx.runMutation(internal.runs.updateStatus, {
+        runId: args.runId,
+        status: "failed",
+        ...(lastSandboxResult?.failureType === "env_setup"
+          ? { verdict: "env_setup_failed" as const }
+          : {}),
+        errorMessage: formatErrorMessageLegacy(error),
       });
     }
 
