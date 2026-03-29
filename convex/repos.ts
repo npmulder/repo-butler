@@ -4,6 +4,12 @@ import type { MutationCtx } from "./_generated/server";
 
 import { internalQuery, mutation, query } from "./_generated/server";
 import {
+  DEFAULT_AUTO_APPROVE_THRESHOLD,
+  DEFAULT_ENABLED_EVENT_TYPES,
+  DEFAULT_MAX_CONCURRENT_RUNS,
+  DEFAULT_MAX_DAILY_RUNS,
+} from "./repoSettings";
+import {
   requireCurrentUser,
   requireInstallationAccess,
   requireRepoAccess,
@@ -20,11 +26,21 @@ async function insertDefaultRepoSettings(
   ctx: MutationCtx,
   repoId: Id<"repos">,
 ) {
+  const now = Date.now();
+
   await ctx.db.insert("repoSettings", {
     repoId,
+    approvalPolicy: "require_label",
+    autoApproveThreshold: DEFAULT_AUTO_APPROVE_THRESHOLD,
+    maxDailyRuns: BigInt(DEFAULT_MAX_DAILY_RUNS),
+    customAreaLabels: [],
+    enabledEventTypes: [...DEFAULT_ENABLED_EVENT_TYPES],
+    createdAt: now,
+    updatedAt: now,
     approvalMode: "label_required",
-    maxConcurrentRuns: BigInt(3),
-    dailyRunLimit: BigInt(20),
+    maxConcurrentRuns: BigInt(DEFAULT_MAX_CONCURRENT_RUNS),
+    dailyRunLimit: BigInt(DEFAULT_MAX_DAILY_RUNS),
+    labelTaxonomy: [],
     sandboxTimeoutSeconds: BigInt(1200),
     networkEnabled: false,
   });
