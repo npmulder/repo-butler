@@ -7,6 +7,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: deploy-cloudflare-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -17,30 +20,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: preview
-    permissions:
-      contents: read
-    env:
-      NEXT_PUBLIC_CONVEX_URL: ${{ vars.NEXT_PUBLIC_CONVEX_URL }}
-      NEXT_PUBLIC_WORKOS_REDIRECT_URI: ${{ vars.NEXT_PUBLIC_WORKOS_REDIRECT_URI }}
-      NEXT_PUBLIC_GITHUB_APP_SLUG: ${{ vars.NEXT_PUBLIC_GITHUB_APP_SLUG }}
-      WORKOS_CLIENT_ID: ${{ secrets.WORKOS_CLIENT_ID }}
-      WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
-      WORKOS_COOKIE_PASSWORD: ${{ secrets.WORKOS_COOKIE_PASSWORD }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v5
-        with:
-          version: 10.6.5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "20"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: ./.github/actions/setup-repo
       - name: Build preview worker
+        env:
+          NEXT_PUBLIC_CONVEX_URL: ${{ vars.NEXT_PUBLIC_CONVEX_URL }}
+          NEXT_PUBLIC_WORKOS_REDIRECT_URI: ${{ vars.NEXT_PUBLIC_WORKOS_REDIRECT_URI }}
+          NEXT_PUBLIC_GITHUB_APP_SLUG: ${{ vars.NEXT_PUBLIC_GITHUB_APP_SLUG }}
+          WORKOS_CLIENT_ID: ${{ secrets.WORKOS_CLIENT_ID }}
+          WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
+          WORKOS_COOKIE_PASSWORD: ${{ secrets.WORKOS_COOKIE_PASSWORD }}
         run: pnpm exec opennextjs-cloudflare build --env preview
       - name: Deploy preview worker
         id: deploy
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@da0e0dfe58b7a431659754fdf3f186c529afbe65 # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -58,30 +52,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
-    permissions:
-      contents: read
-    env:
-      NEXT_PUBLIC_CONVEX_URL: ${{ vars.NEXT_PUBLIC_CONVEX_URL }}
-      NEXT_PUBLIC_WORKOS_REDIRECT_URI: ${{ vars.NEXT_PUBLIC_WORKOS_REDIRECT_URI }}
-      NEXT_PUBLIC_GITHUB_APP_SLUG: ${{ vars.NEXT_PUBLIC_GITHUB_APP_SLUG }}
-      WORKOS_CLIENT_ID: ${{ secrets.WORKOS_CLIENT_ID }}
-      WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
-      WORKOS_COOKIE_PASSWORD: ${{ secrets.WORKOS_COOKIE_PASSWORD }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v5
-        with:
-          version: 10.6.5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "20"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: ./.github/actions/setup-repo
       - name: Build production worker
+        env:
+          NEXT_PUBLIC_CONVEX_URL: ${{ vars.NEXT_PUBLIC_CONVEX_URL }}
+          NEXT_PUBLIC_WORKOS_REDIRECT_URI: ${{ vars.NEXT_PUBLIC_WORKOS_REDIRECT_URI }}
+          NEXT_PUBLIC_GITHUB_APP_SLUG: ${{ vars.NEXT_PUBLIC_GITHUB_APP_SLUG }}
+          WORKOS_CLIENT_ID: ${{ secrets.WORKOS_CLIENT_ID }}
+          WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
+          WORKOS_COOKIE_PASSWORD: ${{ secrets.WORKOS_COOKIE_PASSWORD }}
         run: pnpm exec opennextjs-cloudflare build
       - name: Deploy production worker
         id: deploy
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@da0e0dfe58b7a431659754fdf3f186c529afbe65 # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

@@ -6,29 +6,65 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
+  WORKOS_CLIENT_ID: client_placeholder
+  WORKOS_API_KEY: sk_test_placeholder
+  WORKOS_COOKIE_PASSWORD: 0123456789abcdef0123456789abcdef
+  NEXT_PUBLIC_WORKOS_REDIRECT_URI: http://localhost:3000/callback
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v5
-        with:
-          version: 10.6.5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "20"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm generate:schema-types
-      - run: pnpm validate:schemas
-      - run: pnpm lint
-      - run: pnpm tsc --noEmit
-      - run: pnpm test:unit
-      - run: pnpm test:convex
-      - run: pnpm build
-        env:
-          NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
-          WORKOS_CLIENT_ID: client_placeholder
-          WORKOS_API_KEY: sk_test_placeholder
-          WORKOS_COOKIE_PASSWORD: 0123456789abcdef0123456789abcdef
-          NEXT_PUBLIC_WORKOS_REDIRECT_URI: http://localhost:3000/callback
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: ./.github/actions/setup-repo
+      - name: Generate schema types
+        id: generate_schema_types
+        run: pnpm generate:schema-types
+      - name: Validate schemas
+        id: validate_schemas
+        run: pnpm validate:schemas
+      - name: Lint
+        id: lint
+        run: pnpm lint
+      - name: Typecheck
+        id: typecheck
+        run: pnpm tsc --noEmit
+      - name: Run unit tests
+        id: unit_tests
+        run: pnpm test:unit
+      - name: Run Convex tests
+        id: convex_tests
+        run: pnpm test:convex
+      - name: Build application
+        id: build
+        run: pnpm build
+      - name: Write CI summary
+        if: always()
+        run: |
+          {
+            echo "## CI Summary"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Generate schema types | ${{ steps.generate_schema_types.outcome }} |"
+            echo "| Validate schemas | ${{ steps.validate_schemas.outcome }} |"
+            echo "| Lint | ${{ steps.lint.outcome }} |"
+            echo "| Typecheck | ${{ steps.typecheck.outcome }} |"
+            echo "| Unit tests | ${{ steps.unit_tests.outcome }} |"
+            echo "| Convex tests | ${{ steps.convex_tests.outcome }} |"
+            echo "| Build | ${{ steps.build.outcome }} |"
+            echo
+            echo "Overall status: ${{ job.status }}"
+            echo
+            echo "[View run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -65,7 +65,7 @@ import {
   seedRepo,
   seedRun,
   seedUser,
-} from "./testHelpers";
+} from "../test/convex/testHelpers";
 
 function buildClaudeResponse({
   reproEligible = true,
@@ -169,9 +169,9 @@ describe("pipeline.runTriage", () => {
     });
 
     expect(anthropicState.create).toHaveBeenCalledTimes(1);
-    expect(anthropicState.create.mock.calls[0]?.[0]?.messages[0]?.content).toContain(
-      "Parser crash on empty YAML input",
-    );
+    expect(
+      anthropicState.create.mock.calls[0]?.[0]?.messages[0]?.content,
+    ).toContain("Parser crash on empty YAML input");
     expect(run).toMatchObject({
       status: "awaiting_approval",
       errorMessage:
@@ -224,13 +224,14 @@ describe("pipeline.runTriage", () => {
   it("retries rate limit errors with backoff before succeeding", async () => {
     vi.useFakeTimers();
     anthropicState.create
-      .mockRejectedValueOnce(
-        new anthropicState.MockRateLimitError("Slow down"),
-      )
+      .mockRejectedValueOnce(new anthropicState.MockRateLimitError("Slow down"))
       .mockResolvedValueOnce(buildClaudeResponse());
     const { t, runId, issueId } = await setupPipelineFixture();
 
-    const actionPromise = t.action(internal.pipeline.runTriage, { runId, issueId });
+    const actionPromise = t.action(internal.pipeline.runTriage, {
+      runId,
+      issueId,
+    });
     await vi.runAllTimersAsync();
     await actionPromise;
 

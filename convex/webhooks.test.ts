@@ -7,14 +7,16 @@ import {
   seedRepo,
   seedRepoSettings,
   seedUser,
-} from "./testHelpers";
+} from "../test/convex/testHelpers";
 
-function buildWebhookPayload(overrides: {
-  commentBody?: string;
-  fullName?: string;
-  labelName?: string;
-  installationId?: bigint;
-} = {}) {
+function buildWebhookPayload(
+  overrides: {
+    commentBody?: string;
+    fullName?: string;
+    labelName?: string;
+    installationId?: bigint;
+  } = {},
+) {
   return {
     repository: {
       full_name: overrides.fullName ?? "repo-butler/example",
@@ -238,7 +240,9 @@ describe("webhooks.processWebhook", () => {
           action: "opened",
           payload: buildWebhookPayload(),
         });
-        const runs = await t.run(async (ctx) => await ctx.db.query("runs").collect());
+        const runs = await t.run(
+          async (ctx) => await ctx.db.query("runs").collect(),
+        );
         expect(result).toEqual({ duplicate: false, dispatch: "ignored" });
         expect(runs).toHaveLength(0);
       },
@@ -253,7 +257,9 @@ describe("webhooks.processWebhook", () => {
           action: "opened",
           payload: buildWebhookPayload({ fullName: "repo-butler/missing" }),
         });
-        const runs = await t.run(async (ctx) => await ctx.db.query("runs").collect());
+        const runs = await t.run(
+          async (ctx) => await ctx.db.query("runs").collect(),
+        );
         expect(result).toEqual({ duplicate: false, dispatch: "ignored" });
         expect(runs).toHaveLength(0);
       },
@@ -275,7 +281,9 @@ describe("webhooks.processWebhook", () => {
           action: "opened",
           payload: buildWebhookPayload(),
         });
-        const runs = await t.run(async (ctx) => await ctx.db.query("runs").collect());
+        const runs = await t.run(
+          async (ctx) => await ctx.db.query("runs").collect(),
+        );
         expect(result).toEqual({ duplicate: false, dispatch: "ignored" });
         expect(runs).toHaveLength(0);
       },
@@ -330,7 +338,9 @@ describe("webhooks.processWebhook", () => {
 
     expect(result).toEqual({ duplicate: false, dispatch: "ignored" });
 
-    const runs = await t.run(async (ctx) => await ctx.db.query("runs").collect());
+    const runs = await t.run(
+      async (ctx) => await ctx.db.query("runs").collect(),
+    );
     expect(runs).toHaveLength(0);
   });
 });

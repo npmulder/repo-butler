@@ -1,0 +1,70 @@
+name: Setup repository dependencies
+description: Setup pnpm, configure Node.js, and install dependencies with retry logic.
+
+inputs:
+  node-version:
+    description: Node.js version to install.
+    default: "20"
+  pnpm-version:
+    description: pnpm version to install.
+    default: "10.6.5"
+  install-command:
+    description: Shell command used to install dependencies.
+    default: pnpm install --frozen-lockfile
+  install-retries:
+    description: Number of install attempts before failing.
+    default: "3"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup pnpm
+      uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+      with:
+        version: ${{ inputs.pnpm-version }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: pnpm
+
+    - name: Install dependencies
+      shell: bash
+      env:
+        INSTALL_COMMAND: ${{ inputs.install-command }}
+        INSTALL_RETRIES: ${{ inputs.install-retries }}
+      run: |
+        set +e
+
+        if [ -z "$INSTALL_RETRIES" ]; then
+          INSTALL_RETRIES=3
+        fi
+
+        if ! [[ "$INSTALL_RETRIES" =~ ^[0-9]+$ ]]; then
+          echo "Invalid value for INSTALL_RETRIES: '$INSTALL_RETRIES'. It must be an integer >= 1." >&2
+          exit 1
+        fi
+
+        if [ "$INSTALL_RETRIES" -lt 1 ]; then
+          echo "INSTALL_RETRIES must be at least 1, but was '$INSTALL_RETRIES'." >&2
+          exit 1
+        fi
+
+        attempt=1
+        while [ "$attempt" -le "$INSTALL_RETRIES" ]; do
+          bash -lc "$INSTALL_COMMAND"
+          exit_code=$?
+          if [ "$exit_code" -eq 0 ]; then
+            exit 0
+          fi
+
+          if [ "$attempt" -eq "$INSTALL_RETRIES" ]; then
+            echo "Dependency install failed after $attempt attempt(s)." >&2
+            exit "$exit_code"
+          fi
+
+          echo "Dependency install failed on attempt $attempt/$INSTALL_RETRIES; retrying in 10 seconds." >&2
+          attempt=$((attempt + 1))
+          sleep 10
+        done
