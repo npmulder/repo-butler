@@ -27,6 +27,7 @@ const anthropicState = vi.hoisted(() => {
 
   return {
     create: vi.fn(),
+    getRequestOptions: vi.fn(),
     provider: "anthropic" as "anthropic" | "openrouter",
     MockAPIError,
     MockRateLimitError,
@@ -56,6 +57,7 @@ vi.mock("../lib/claude", () => {
         create: anthropicState.create,
       },
     }),
+    getAnthropicRequestOptions: anthropicState.getRequestOptions,
   };
 });
 
@@ -177,6 +179,8 @@ async function setupPipelineFixture() {
 
 beforeEach(() => {
   anthropicState.create.mockReset();
+  anthropicState.getRequestOptions.mockReset();
+  anthropicState.getRequestOptions.mockReturnValue(undefined);
   anthropicState.provider = "anthropic";
   vi.useRealTimers();
 });
@@ -216,6 +220,31 @@ describe("pipeline.runTriage", () => {
         output: 123,
       },
     });
+  });
+
+  it("passes Anthropic SDK request options through to the triage request", async () => {
+    const requestOptions = {
+      body: {
+        provider: {
+          order: ["anthropic", "amazon-bedrock", "google-vertex"],
+          allow_fallbacks: true,
+        },
+      },
+    };
+    anthropicState.getRequestOptions.mockReturnValueOnce(requestOptions);
+    anthropicState.create.mockResolvedValue(buildClaudeResponse());
+    const { t, runId, issueId } = await setupPipelineFixture();
+
+    await t.action(internal.pipeline.runTriage, { runId, issueId });
+
+    expect(anthropicState.getRequestOptions).toHaveBeenCalledTimes(1);
+    expect(anthropicState.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+      }),
+      requestOptions,
+    );
   });
 
   it("completes runs when triage marks them as not repro eligible", async () => {
