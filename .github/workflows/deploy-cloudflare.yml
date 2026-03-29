@@ -44,7 +44,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --env preview --keep-vars --message "Preview deploy for PR #${{ github.event.pull_request.number }}"
+          command: deploy --env preview --keep-vars
       - name: Write preview summary
         run: |
           {
@@ -85,7 +85,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --keep-vars --message "Production deploy for ${GITHUB_SHA}"
+          command: deploy --keep-vars
       - name: Write production summary
         run: |
           {
