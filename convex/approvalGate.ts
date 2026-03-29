@@ -3,9 +3,11 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalQuery,
+  mutation,
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
+import { requireRunAccess } from "./lib/auth";
 import { STATUS_LABELS } from "../lib/labels";
 import {
   DEFAULT_AUTO_APPROVE_THRESHOLD,
@@ -56,6 +58,11 @@ const approvalDecisionValidator = v.object({
   approved: v.boolean(),
   reason: v.string(),
 });
+const approvalActionValidator = v.union(
+  v.literal("approve"),
+  v.literal("reject"),
+  v.literal("request_info"),
+);
 const maintainerAuthorAssociations = new Set([
   "COLLABORATOR",
   "MEMBER",
@@ -206,6 +213,8 @@ export function buildApprovalPatch({
       success: true,
       patch: {
         status: "approved",
+        approvalDecision: "approved",
+        approvalUpdatedAt: approvedAt,
         approvedAt,
         approvedBy,
         errorMessage: `Approved by ${approvedBy}`,
@@ -218,6 +227,8 @@ export function buildApprovalPatch({
       success: true,
       patch: {
         status: "rejected",
+        approvalDecision: "rejected",
+        approvalUpdatedAt: approvedAt,
         approvedAt,
         approvedBy,
         completedAt: approvedAt,
@@ -230,6 +241,8 @@ export function buildApprovalPatch({
     success: true,
     patch: {
       status: "needs_info",
+      approvalDecision: "request_info",
+      approvalUpdatedAt: approvedAt,
       approvedAt,
       approvedBy,
       completedAt: approvedAt,
@@ -326,6 +339,44 @@ async function applyApproval(
 
   return { success: true as const };
 }
+
+export const processApproval = mutation({
+  args: {
+    runId: v.id("runs"),
+    action: approvalActionValidator,
+  },
+  handler: async (ctx, args) => {
+    const { run, user } = await requireRunAccess(ctx, args.runId);
+    const approvedBy = user.name?.trim() || user.email;
+    const outcome = buildApprovalPatch({
+      action: args.action,
+      approvedAt: Date.now(),
+      approvedBy,
+      runStatus: run.status,
+    });
+
+    if (!outcome.success) {
+      throw new Error(outcome.error);
+    }
+
+    await ctx.db.patch(run._id, outcome.patch);
+
+    return {
+      approvalDecision:
+        args.action === "approve"
+          ? ("approved" as const)
+          : args.action === "reject"
+            ? ("rejected" as const)
+            : ("request_info" as const),
+      status:
+        args.action === "approve"
+          ? ("approved" as const)
+          : args.action === "reject"
+            ? ("rejected" as const)
+            : ("needs_info" as const),
+    };
+  },
+});
 
 export async function processApprovalLabelEvent(
   ctx: MutationCtx,

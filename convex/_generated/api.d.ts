@@ -8,9 +8,11 @@
  * @module
  */
 
+import type * as approvalGate from "../approvalGate.js";
 import type * as artifacts from "../artifacts.js";
 import type * as approvalGate from "../approvalGate.js";
 import type * as auth from "../auth.js";
+import type * as dashboard from "../dashboard.js";
 import type * as githubInstallations from "../githubInstallations.js";
 import type * as http from "../http.js";
 import type * as issues from "../issues.js";
@@ -31,9 +33,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  approvalGate: typeof approvalGate;
   artifacts: typeof artifacts;
   approvalGate: typeof approvalGate;
   auth: typeof auth;
+  dashboard: typeof dashboard;
   githubInstallations: typeof githubInstallations;
   http: typeof http;
   issues: typeof issues;

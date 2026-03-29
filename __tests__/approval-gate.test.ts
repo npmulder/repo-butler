@@ -125,6 +125,8 @@ describe("approval gate", () => {
       success: true,
       patch: {
         status: "approved",
+        approvalDecision: "approved",
+        approvalUpdatedAt: 123,
         approvedAt: 123,
         approvedBy: "maintainer",
         errorMessage: "Approved by maintainer",
