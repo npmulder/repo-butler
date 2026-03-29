@@ -4,7 +4,7 @@ import { requireAuth } from "@/lib/auth";
 export default async function RepoSettingsPage({
   params,
 }: {
-  params: Promise<{ repoId: string }> | { repoId: string };
+  params: Promise<{ repoId: string }>;
 }) {
   await requireAuth();
 
