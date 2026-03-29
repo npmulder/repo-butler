@@ -13,12 +13,7 @@ export interface ReproPlan {
   environment_strategy: {
     preferred: "devcontainer" | "dockerfile" | "synth_dockerfile" | "bootstrap";
     detected: "devcontainer" | "dockerfile" | "synth_dockerfile" | "bootstrap";
-    fallbacks: (
-      | "devcontainer"
-      | "dockerfile"
-      | "synth_dockerfile"
-      | "bootstrap"
-    )[];
+    fallbacks: ("devcontainer" | "dockerfile" | "synth_dockerfile" | "bootstrap")[];
     notes?: string;
     image_used?: string;
   };
@@ -33,7 +28,7 @@ export interface ReproPlan {
     ...{
       cwd: string;
       cmd: string;
-    }[],
+    }[]
   ];
   artifact: {
     type: string;

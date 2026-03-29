@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import {
   ArrowUpRight,
@@ -9,11 +10,13 @@ import {
   Milestone,
   TriangleAlert,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 import type { Doc } from "@/convex/_generated/dataModel";
 import { ApprovalActions } from "@/components/ApprovalActions";
 import { ConfidenceMeter } from "@/components/ConfidenceMeter";
 import { StatusBadge } from "@/components/StatusBadge";
+import { buttonStyles } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import {
   classificationColor,
@@ -34,6 +37,7 @@ type TriageCardProps = {
 
 export function TriageCard({ issue, repo, run, triage }: TriageCardProps) {
   const [showHypothesis, setShowHypothesis] = useState(false);
+  const searchParams = useSearchParams();
   const classificationType =
     triage?.classificationType ?? triage?.classification?.type ?? null;
   const severity = triage?.severity ?? triage?.classification?.severity ?? null;
@@ -44,6 +48,8 @@ export function TriageCard({ issue, repo, run, triage }: TriageCardProps) {
   const expectedFailureSignal = triage?.reproHypothesis?.expectedFailureSignal;
   const environmentAssumptions = triage?.reproHypothesis?.environmentAssumptions;
   const issueNumber = issue ? `#${issue.githubIssueNumber.toString()}` : null;
+  const backQuery = searchParams.toString();
+  const runDetailHref = `/runs/${run._id}${backQuery ? `?back=${encodeURIComponent(`/dashboard?${backQuery}`)}` : "?back=%2Fdashboard"}`;
 
   return (
     <Panel className="overflow-hidden bg-panel/75">
@@ -73,17 +79,25 @@ export function TriageCard({ issue, repo, run, triage }: TriageCardProps) {
           </div>
         </div>
 
-        {issue?.githubIssueUrl ? (
-          <a
-            className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/60 px-3 py-2 text-sm font-medium text-foreground hover:border-accent/30 hover:text-accent"
-            href={issue.githubIssueUrl}
-            rel="noreferrer"
-            target="_blank"
+        <div className="flex flex-wrap gap-3">
+          <Link
+            className={buttonStyles({ variant: "ghost" })}
+            href={runDetailHref}
           >
-            Open on GitHub
-            <ArrowUpRight className="h-4 w-4" />
-          </a>
-        ) : null}
+            Run details
+          </Link>
+          {issue?.githubIssueUrl ? (
+            <a
+              className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/60 px-3 py-2 text-sm font-medium text-foreground hover:border-accent/30 hover:text-accent"
+              href={issue.githubIssueUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open on GitHub
+              <ArrowUpRight className="h-4 w-4" />
+            </a>
+          ) : null}
+        </div>
       </div>
 
       <div className="grid gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_300px]">
