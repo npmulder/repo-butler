@@ -302,6 +302,46 @@ describe("triage parser", () => {
     expect(prompt).toContain("README Excerpt");
   });
 
+  it("truncates issue bodies longer than 8000 characters", () => {
+    const input = buildTriageInput(sampleIssues.clearBug);
+    input.issue.body = "x".repeat(8100);
+
+    const prompt = buildTriageUserPrompt(input);
+
+    expect(prompt).toContain("[truncated after 8000 characters]");
+    expect(prompt).not.toContain("x".repeat(8050));
+  });
+
+  it("truncates readme excerpts longer than 4000 characters", () => {
+    const input = buildTriageInput(sampleIssues.clearBug);
+    input.repoContext!.readme = "r".repeat(4100);
+
+    const prompt = buildTriageUserPrompt(input);
+
+    expect(prompt).toContain("[truncated after 4000 characters]");
+    expect(prompt).not.toContain("r".repeat(4050));
+  });
+
+  it("renders empty issue bodies explicitly", () => {
+    const input = buildTriageInput(sampleIssues.clearBug);
+    input.issue.body = "   ";
+
+    const prompt = buildTriageUserPrompt(input);
+
+    expect(prompt).toContain("### Issue Body\n\n(empty)");
+  });
+
+  it("omits repository context when repoContext is missing", () => {
+    const input = buildTriageInput(sampleIssues.clearBug);
+    delete input.repoContext;
+
+    const prompt = buildTriageUserPrompt(input);
+
+    expect(prompt).not.toContain("## Repository Context");
+    expect(prompt).not.toContain("README Excerpt");
+    expect(prompt).toContain("## Issue #42");
+  });
+
   it.each(integrationCases)(
     "parses mocked Claude output and validates the artifact for %s",
     (_name, issue, toolOutput) => {
