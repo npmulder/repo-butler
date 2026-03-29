@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import {
   AlertTriangle,
@@ -12,6 +13,7 @@ import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
+import type { Doc } from "@/convex/_generated/dataModel";
 import { buttonStyles } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { cn } from "@/lib/utils";
@@ -44,12 +46,17 @@ export function RepoSelector({
   installationUrl: string | null;
 }) {
   const searchParams = useSearchParams();
-  const currentUser = useQuery(api.users.getCurrentUser, {});
+  const currentUser = useQuery(api.users.getCurrentUser, {}) as
+    | Doc<"users">
+    | null
+    | undefined;
   const installations = useQuery(
     api.githubInstallations.list,
     currentUser ? {} : "skip",
-  );
-  const repos = useQuery(api.repos.list, currentUser ? {} : "skip");
+  ) as Doc<"githubInstallations">[] | undefined;
+  const repos = useQuery(api.repos.list, currentUser ? {} : "skip") as
+    | Doc<"repos">[]
+    | undefined;
   const toggleActive = useMutation(api.repos.toggleActive);
   const [pendingRepoId, setPendingRepoId] = useState<string | null>(null);
 
@@ -238,36 +245,47 @@ export function RepoSelector({
                     </p>
                   </div>
 
-                  <button
-                    className={cn(
-                      "inline-flex h-11 items-center justify-center rounded-full border px-4 text-sm font-medium transition",
-                      repo.isActive
-                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400/40"
-                        : "border-border/80 bg-panel/65 text-muted-foreground hover:border-accent/30 hover:text-foreground",
-                    )}
-                    disabled={isPending}
-                    onClick={() => {
-                      setPendingRepoId(repo._id);
-                      void toggleActive({
-                        repoId: repo._id,
-                        isActive: !repo.isActive,
-                      }).finally(() => {
-                        setPendingRepoId(null);
-                      });
-                    }}
-                    type="button"
-                  >
-                    {isPending ? (
-                      <>
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                        Updating
-                      </>
-                    ) : repo.isActive ? (
-                      "Active"
-                    ) : (
-                      "Inactive"
-                    )}
-                  </button>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <Link
+                      className={buttonStyles({
+                        variant: "ghost",
+                        className: "w-full sm:w-auto",
+                      })}
+                      href={`/settings/${repo._id}`}
+                    >
+                      Approval settings
+                    </Link>
+                    <button
+                      className={cn(
+                        "inline-flex h-11 items-center justify-center rounded-full border px-4 text-sm font-medium transition",
+                        repo.isActive
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400/40"
+                          : "border-border/80 bg-panel/65 text-muted-foreground hover:border-accent/30 hover:text-foreground",
+                      )}
+                      disabled={isPending}
+                      onClick={() => {
+                        setPendingRepoId(repo._id);
+                        void toggleActive({
+                          repoId: repo._id,
+                          isActive: !repo.isActive,
+                        }).finally(() => {
+                          setPendingRepoId(null);
+                        });
+                      }}
+                      type="button"
+                    >
+                      {isPending ? (
+                        <>
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                          Updating
+                        </>
+                      ) : repo.isActive ? (
+                        "Active"
+                      ) : (
+                        "Inactive"
+                      )}
+                    </button>
+                  </div>
                 </div>
               );
             })}

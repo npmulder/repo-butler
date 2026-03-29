@@ -108,6 +108,27 @@ export default defineSchema({
 
   repoSettings: defineTable({
     repoId: v.id("repos"),
+    approvalPolicy: v.optional(
+      v.union(
+        v.literal("auto_approve"),
+        v.literal("require_label"),
+        v.literal("require_comment"),
+      ),
+    ),
+    autoApproveThreshold: v.optional(v.float64()),
+    maxDailyRuns: v.optional(v.int64()),
+    customAreaLabels: v.optional(v.array(v.string())),
+    enabledEventTypes: v.optional(
+      v.array(
+        v.union(
+          v.literal("issues.opened"),
+          v.literal("issues.labeled"),
+          v.literal("issue_comment.created"),
+        ),
+      ),
+    ),
+    createdAt: v.optional(v.float64()),
+    updatedAt: v.optional(v.float64()),
     labelTaxonomy: v.optional(v.array(v.string())),
     approvalMode: v.union(
       v.literal("auto"),
@@ -167,6 +188,9 @@ export default defineSchema({
       v.literal("pending"),
       v.literal("triaging"),
       v.literal("awaiting_approval"),
+      v.literal("approved"),
+      v.literal("rejected"),
+      v.literal("needs_info"),
       v.literal("reproducing"),
       v.literal("verifying"),
       v.literal("completed"),
@@ -175,8 +199,18 @@ export default defineSchema({
     ),
     startedAt: v.float64(),
     completedAt: v.optional(v.float64()),
+    approvedBy: v.optional(v.string()),
+    approvedAt: v.optional(v.float64()),
     verdict: v.optional(verdictValidator),
     errorMessage: v.optional(v.string()),
+    approvalDecision: v.optional(
+      v.union(
+        v.literal("approved"),
+        v.literal("rejected"),
+        v.literal("request_info"),
+      ),
+    ),
+    approvalUpdatedAt: v.optional(v.float64()),
   })
     .index("by_run_id", ["runId"])
     .index("by_user_and_started_at", ["userId", "startedAt"])
