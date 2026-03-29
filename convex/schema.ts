@@ -177,6 +177,14 @@ export default defineSchema({
     completedAt: v.optional(v.float64()),
     verdict: v.optional(verdictValidator),
     errorMessage: v.optional(v.string()),
+    approvalDecision: v.optional(
+      v.union(
+        v.literal("approved"),
+        v.literal("rejected"),
+        v.literal("request_info"),
+      ),
+    ),
+    approvalUpdatedAt: v.optional(v.float64()),
   })
     .index("by_run_id", ["runId"])
     .index("by_user_and_started_at", ["userId", "startedAt"])
