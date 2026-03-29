@@ -69,48 +69,51 @@ describe("sandbox server auth", () => {
 });
 
 sandboxSuite("runSandbox integration", () => {
-  it(
-    "runs a passing sandbox request through the HTTP worker and client",
-    async () => {
-      const fixture = await createFixtureRepository("happy-path");
-      const server = createSandboxServer({ workerSecret: "sandbox-secret" });
-      cleanupTasks.push(fixture.cleanup);
-      cleanupTasks.push(async () => {
-        await closeServer(server);
-      });
+  it("runs a passing sandbox request through the HTTP worker and client", async () => {
+    const fixture = await createFixtureRepository("happy-path");
+    const server = createSandboxServer({ workerSecret: "sandbox-secret" });
+    cleanupTasks.push(fixture.cleanup);
+    cleanupTasks.push(async () => {
+      await closeServer(server);
+    });
 
-      await listen(server);
-      const address = server.address();
+    await listen(server);
+    const address = server.address();
 
-      if (!address || typeof address === "string") {
-        throw new Error("Expected a TCP server address");
-      }
+    if (!address || typeof address === "string") {
+      throw new Error("Expected a TCP server address");
+    }
 
-      const result = await executeSandbox(
-        createRequest(fixture, {
-          runId: "happy-path",
-          commands: [{ name: "passing test", cmd: "npm run test:pass" }],
-        }),
-        {
-          workerUrl: `http://127.0.0.1:${address.port}`,
-          secret: "sandbox-secret",
-        },
-      );
+    const result = await executeSandbox(
+      createRequest(fixture, {
+        runId: "happy-path",
+        commands: [{ name: "passing test", cmd: "npm run test:pass" }],
+      }),
+      {
+        workerUrl: `http://127.0.0.1:${address.port}`,
+        secret: "sandbox-secret",
+      },
+    );
 
-      expect(result.status).toBe("success");
-      expect(result.steps).toHaveLength(1);
-      expect(result.steps[0]).toEqual(
-        expect.objectContaining({
-          name: "passing test",
-          exitCode: 0,
-        }),
-      );
-      expect(result.sandbox.kind).toBe("docker");
-      expect(result.sandbox.network).toBe("disabled");
-      expect(result.sandbox.uid).toBe(1000);
-    },
-    60_000,
-  );
+    expect(result.status).toBe("success");
+    expect(result.steps).toHaveLength(1);
+    expect(result.steps[0]).toEqual(
+      expect.objectContaining({
+        name: "passing test",
+        exitCode: 0,
+      }),
+    );
+    expect(result.environmentStrategy).toEqual(
+      expect.objectContaining({
+        detected: "dockerfile",
+        imageUsed: expect.any(String),
+      }),
+    );
+    expect(result.failureType).toBeUndefined();
+    expect(result.sandbox.kind).toBe("docker");
+    expect(result.sandbox.network).toBe("disabled");
+    expect(result.sandbox.uid).toBe(1000);
+  }, 60_000);
 
   it("records a deterministic failing reproduction", async () => {
     const fixture = await createFixtureRepository("failing-run");
@@ -126,6 +129,7 @@ sandboxSuite("runSandbox integration", () => {
     expect(result.status).toBe("failure");
     expect(result.steps).toHaveLength(1);
     expect(result.steps[0]?.exitCode).not.toBe(0);
+    expect(result.failureType).toBe("repro_failure");
     expect(result.failureObserved).toEqual(
       expect.objectContaining({ kind: "nonzero_exit" }),
     );
@@ -167,7 +171,7 @@ sandboxSuite("runSandbox integration", () => {
         commands: [
           {
             name: "sleep forever",
-            cmd: "node -e \"setInterval(() => {}, 1000)\"",
+            cmd: 'node -e "setInterval(() => {}, 1000)"',
             timeout: 2,
           },
         ],
@@ -260,10 +264,16 @@ sandboxSuite("runSandbox integration", () => {
 });
 
 async function createFixtureRepository(suffix: string) {
-  const repoDir = await fs.mkdtemp(path.join(os.tmpdir(), `toy-sandbox-${suffix}-`));
+  const repoDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), `toy-sandbox-${suffix}-`),
+  );
   await fs.cp(fixtureSourceDir, repoDir, { recursive: true });
   await runCommand("git", ["init", "-b", "main"], repoDir);
-  await runCommand("git", ["config", "user.email", "codex@example.com"], repoDir);
+  await runCommand(
+    "git",
+    ["config", "user.email", "codex@example.com"],
+    repoDir,
+  );
   await runCommand("git", ["config", "user.name", "Codex"], repoDir);
   await runCommand("git", ["add", "."], repoDir);
   await runCommand("git", ["commit", "-m", "Initial fixture"], repoDir);
@@ -292,8 +302,8 @@ function createRequest(
     runId: overrides.runId,
     repo: fixture,
     environment: {
-      strategy: "dockerfile",
-      dockerfilePath: "Dockerfile",
+      languageHint: "typescript",
+      runtimeHint: "20",
     },
     commands: overrides.commands,
     policy: {
@@ -315,12 +325,16 @@ async function isDockerAvailable(): Promise<boolean> {
   }
 }
 
-async function listen(server: ReturnType<typeof createSandboxServer>): Promise<void> {
+async function listen(
+  server: ReturnType<typeof createSandboxServer>,
+): Promise<void> {
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
 }
 
-async function closeServer(server: ReturnType<typeof createSandboxServer>): Promise<void> {
+async function closeServer(
+  server: ReturnType<typeof createSandboxServer>,
+): Promise<void> {
   if (!server.listening) {
     return;
   }
@@ -354,7 +368,11 @@ async function listSandboxDirs(runId: string): Promise<string[]> {
   return entries.filter((entry) => entry.startsWith(prefix));
 }
 
-function runCommand(command: string, args: string[], cwd: string): Promise<string> {
+function runCommand(
+  command: string,
+  args: string[],
+  cwd: string,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,

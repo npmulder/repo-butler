@@ -6,15 +6,23 @@ import path from "node:path";
 import type Docker from "dockerode";
 
 import {
-  buildDockerImage,
   cleanupContainer,
   createSandboxContainer,
   ensureImageAvailable,
   getImageDigest,
 } from "./docker-manager";
+import { synthesizeDockerfile } from "./bootstrap-builder";
+import { buildFromDevcontainer } from "./devcontainer-builder";
+import { buildFromDockerfile } from "./dockerfile-builder";
+import {
+  detectEnvironmentStrategy,
+  getFallbackStrategies,
+  normalizeStrategy,
+} from "./env-strategy";
 import { executeStep } from "./step-executor";
 import type {
   SandboxCommand,
+  SandboxFailureType,
   SandboxRequest,
   SandboxResult,
   SandboxStatus,
@@ -23,12 +31,31 @@ import type {
 
 const DEFAULT_SANDBOX_UID = 1000;
 const DEFAULT_WALL_CLOCK_TIMEOUT_SECONDS = 1200;
-const DEFAULT_BASE_IMAGE = "node:20-bookworm-slim";
 
-export async function runSandbox(request: SandboxRequest): Promise<SandboxResult> {
+type ExecutionPhase =
+  | "clone_repo"
+  | "prepare_workspace"
+  | "detect_environment"
+  | "resolve_image"
+  | "create_container"
+  | "setup_commands"
+  | "execute_steps";
+
+interface ResolvedEnvironment {
+  image: string;
+  setupCommands: SandboxCommand[];
+  strategy: NonNullable<SandboxResult["environmentStrategy"]>;
+}
+
+export async function runSandbox(
+  request: SandboxRequest,
+): Promise<SandboxResult> {
   const startTime = Date.now();
   const sandboxRoot = await fs.mkdtemp(
-    path.join(os.tmpdir(), `rb-sandbox-${sanitizeForFilesystem(request.runId)}-`),
+    path.join(
+      os.tmpdir(),
+      `rb-sandbox-${sanitizeForFilesystem(request.runId)}-`,
+    ),
   );
   const repoDir = path.join(sandboxRoot, "repo");
   const steps: StepResult[] = [];
@@ -45,14 +72,40 @@ export async function runSandbox(request: SandboxRequest): Promise<SandboxResult
   let container: Docker.Container | null = null;
   let imageRef = "unknown";
   let imageDigest = "unknown";
+  let phase: ExecutionPhase = "clone_repo";
+  let environmentStrategy: SandboxResult["environmentStrategy"];
 
   try {
     await cloneRepo(repoDir, request.repo);
+    phase = "prepare_workspace";
     await makeWorkspaceWritable(repoDir);
 
-    imageRef = await resolveImage(repoDir, request.environment, request.runId, labels);
+    phase = "detect_environment";
+    const environmentPlan = await detectEnvironmentStrategy(repoDir, {
+      language: request.environment.languageHint,
+      runtime: request.environment.runtimeHint,
+      devcontainerPath: request.environment.devcontainerPath,
+      dockerfilePath: request.environment.dockerfilePath,
+    });
+    environmentStrategy = buildEnvironmentStrategyRecord(
+      request.environment.strategy,
+      environmentPlan,
+    );
+
+    phase = "resolve_image";
+    const resolvedEnvironment = await resolveImage(
+      repoDir,
+      request.environment,
+      environmentPlan,
+      environmentStrategy,
+      request.runId,
+      labels,
+    );
+    environmentStrategy = resolvedEnvironment.strategy;
+    imageRef = resolvedEnvironment.image;
     imageDigest = await getImageDigest(imageRef);
 
+    phase = "create_container";
     container = await createSandboxContainer({
       image: imageRef,
       workdir: "/workspace",
@@ -64,11 +117,18 @@ export async function runSandbox(request: SandboxRequest): Promise<SandboxResult
       volumes: [{ host: repoDir, container: "/workspace" }],
     });
 
-    for (const step of expandCommands(request.environment, request.commands)) {
+    phase = "setup_commands";
+    for (const step of resolvedEnvironment.setupCommands) {
       const remainingSeconds = Math.floor((deadline - Date.now()) / 1000);
 
       if (remainingSeconds <= 0) {
-        return buildResult(request, steps, imageDigest, startTime, "timeout");
+        return buildResult(request, steps, imageDigest, startTime, "timeout", {
+          failureType: "env_setup",
+          environmentStrategy: {
+            ...environmentStrategy,
+            failedAt: phase,
+          },
+        });
       }
 
       const execution = await executeStep(container, {
@@ -78,7 +138,48 @@ export async function runSandbox(request: SandboxRequest): Promise<SandboxResult
       steps.push(execution.result);
 
       if (execution.timedOut) {
-        return buildResult(request, steps, imageDigest, startTime, "timeout");
+        return buildResult(request, steps, imageDigest, startTime, "timeout", {
+          failureType: "env_setup",
+          environmentStrategy: {
+            ...environmentStrategy,
+            failedAt: phase,
+          },
+        });
+      }
+
+      if (execution.result.exitCode !== 0) {
+        return buildResult(request, steps, imageDigest, startTime, "error", {
+          failureType: "env_setup",
+          environmentStrategy: {
+            ...environmentStrategy,
+            failedAt: phase,
+          },
+        });
+      }
+    }
+
+    phase = "execute_steps";
+    for (const step of request.commands) {
+      const remainingSeconds = Math.floor((deadline - Date.now()) / 1000);
+
+      if (remainingSeconds <= 0) {
+        return buildResult(request, steps, imageDigest, startTime, "timeout", {
+          failureType: "repro_failure",
+          environmentStrategy,
+        });
+      }
+
+      const execution = await executeStep(container, {
+        ...step,
+        timeout: Math.max(1, Math.min(step.timeout ?? 300, remainingSeconds)),
+      });
+      steps.push(execution.result);
+
+      if (execution.timedOut) {
+        return buildResult(request, steps, imageDigest, startTime, "timeout", {
+          failureType: "repro_failure",
+          environmentStrategy,
+        });
       }
     }
 
@@ -86,9 +187,20 @@ export async function runSandbox(request: SandboxRequest): Promise<SandboxResult
       ? "failure"
       : "success";
 
-    return buildResult(request, steps, imageDigest, startTime, status);
+    return buildResult(request, steps, imageDigest, startTime, status, {
+      failureType: status === "success" ? undefined : "repro_failure",
+      environmentStrategy,
+    });
   } catch {
-    return buildResult(request, steps, imageDigest, startTime, "error");
+    return buildResult(request, steps, imageDigest, startTime, "error", {
+      failureType: phase === "execute_steps" ? "repro_failure" : "env_setup",
+      environmentStrategy: environmentStrategy
+        ? {
+            ...environmentStrategy,
+            failedAt: phase,
+          }
+        : undefined,
+    });
   } finally {
     if (container) {
       await cleanupContainer(container).catch(() => undefined);
@@ -104,12 +216,24 @@ async function cloneRepo(
 ): Promise<void> {
   await runHostCommand(
     "git",
-    ["clone", "--no-tags", "--single-branch", "--branch", repo.ref, repo.cloneUrl, repoDir],
+    [
+      "clone",
+      "--no-tags",
+      "--single-branch",
+      "--branch",
+      repo.ref,
+      repo.cloneUrl,
+      repoDir,
+    ],
     { timeoutMs: 2 * 60 * 1000 },
   );
-  await runHostCommand("git", ["-C", repoDir, "checkout", "--detach", repo.sha], {
-    timeoutMs: 30 * 1000,
-  });
+  await runHostCommand(
+    "git",
+    ["-C", repoDir, "checkout", "--detach", repo.sha],
+    {
+      timeoutMs: 30 * 1000,
+    },
+  );
 }
 
 async function makeWorkspaceWritable(repoDir: string): Promise<void> {
@@ -121,113 +245,112 @@ async function makeWorkspaceWritable(repoDir: string): Promise<void> {
 async function resolveImage(
   repoDir: string,
   environment: SandboxRequest["environment"],
+  plan: Awaited<ReturnType<typeof detectEnvironmentStrategy>>,
+  strategy: NonNullable<SandboxResult["environmentStrategy"]>,
   runId: string,
   labels: Record<string, string>,
-): Promise<string> {
-  switch (environment.strategy) {
-    case "dockerfile":
-      return buildImageFromDockerfile(
+): Promise<ResolvedEnvironment> {
+  switch (plan.strategy) {
+    case "devcontainer": {
+      const result = await buildFromDevcontainer(
         repoDir,
-        environment.dockerfilePath ?? "Dockerfile",
-        runId,
-        labels,
+        plan.dockerfilePath ??
+          environment.devcontainerPath ??
+          ".devcontainer/devcontainer.json",
+        {
+          tag: buildImageTag(runId),
+          labels,
+        },
       );
-    case "devcontainer":
-      return resolveDevcontainerImage(
+
+      return {
+        image: result.image,
+        setupCommands: result.setupCommands.map((cmd, index) => ({
+          name: `postCreate:${index + 1}`,
+          cmd,
+        })),
+        strategy: {
+          ...strategy,
+          imageUsed: result.image,
+          notes: appendNotes(strategy.notes, result.notes),
+        },
+      };
+    }
+
+    case "dockerfile": {
+      const image = await buildFromDockerfile(
         repoDir,
-        environment.devcontainerPath ?? ".devcontainer/devcontainer.json",
-        runId,
-        labels,
+        plan.dockerfilePath ?? environment.dockerfilePath ?? "Dockerfile",
+        {
+          tag: buildImageTag(runId),
+          labels,
+        },
       );
+
+      return {
+        image,
+        setupCommands: [],
+        strategy: {
+          ...strategy,
+          imageUsed: image,
+        },
+      };
+    }
+
+    case "synth_dockerfile": {
+      const synthesized = await synthesizeDockerfile(repoDir, {
+        language: environment.languageHint,
+        runtime: environment.runtimeHint,
+      });
+
+      if (!synthesized) {
+        throw new Error(
+          "Expected Dockerfile synthesis to succeed for the detected project",
+        );
+      }
+
+      const image = await buildFromDockerfile(
+        repoDir,
+        synthesized.dockerfilePath,
+        {
+          tag: buildImageTag(runId),
+          labels,
+        },
+      );
+
+      return {
+        image,
+        setupCommands: [],
+        strategy: {
+          ...strategy,
+          imageUsed: image,
+          notes: appendNotes(strategy.notes, [
+            `Generated ${path.basename(synthesized.dockerfilePath)} for ${synthesized.detection.language} (${synthesized.detection.packageManager})`,
+          ]),
+        },
+      };
+    }
+
     case "bootstrap":
     default: {
-      const baseImage = process.env.SANDBOX_BASE_IMAGE ?? DEFAULT_BASE_IMAGE;
+      const baseImage =
+        plan.image ?? process.env.SANDBOX_BASE_IMAGE ?? "ubuntu:22.04";
       await ensureImageAvailable(baseImage);
-      return baseImage;
+      return {
+        image: baseImage,
+        setupCommands: (environment.bootstrapCommands ?? []).map(
+          (cmd, index) => ({
+            name: `bootstrap:${index + 1}`,
+            cmd,
+          }),
+        ),
+        strategy: {
+          ...strategy,
+          imageUsed: baseImage,
+        },
+      };
     }
   }
-}
-
-async function buildImageFromDockerfile(
-  repoDir: string,
-  dockerfilePath: string,
-  runId: string,
-  labels: Record<string, string>,
-): Promise<string> {
-  const resolvedDockerfile = path.resolve(repoDir, dockerfilePath);
-  const tag = `rb-sandbox:${sanitizeForFilesystem(runId)}-${Date.now()}`;
-
-  return buildDockerImage({
-    contextDir: repoDir,
-    dockerfilePath: resolvedDockerfile,
-    tag,
-    labels,
-  });
-}
-
-async function resolveDevcontainerImage(
-  repoDir: string,
-  devcontainerPath: string,
-  runId: string,
-  labels: Record<string, string>,
-): Promise<string> {
-  const resolvedConfigPath = path.resolve(repoDir, devcontainerPath);
-  const rawConfig = await fs.readFile(resolvedConfigPath, "utf8");
-  const config = JSON.parse(stripJsonComments(rawConfig)) as {
-    image?: string;
-    dockerFile?: string;
-    context?: string;
-    build?: {
-      dockerfile?: string;
-      dockerFile?: string;
-      context?: string;
-    };
-  };
-
-  if (config.image) {
-    await ensureImageAvailable(config.image);
-    return config.image;
-  }
-
-  const dockerfilePath =
-    config.build?.dockerfile ?? config.build?.dockerFile ?? config.dockerFile;
-
-  if (dockerfilePath) {
-    const configDir = path.dirname(resolvedConfigPath);
-    const contextDir = path.resolve(
-      configDir,
-      config.build?.context ?? config.context ?? ".",
-    );
-    const resolvedDockerfile = path.resolve(configDir, dockerfilePath);
-    const tag = `rb-sandbox:${sanitizeForFilesystem(runId)}-${Date.now()}`;
-
-    return buildDockerImage({
-      contextDir,
-      dockerfilePath: resolvedDockerfile,
-      tag,
-      labels,
-    });
-  }
-
-  const baseImage = process.env.SANDBOX_BASE_IMAGE ?? DEFAULT_BASE_IMAGE;
-  await ensureImageAvailable(baseImage);
-  return baseImage;
-}
-
-function expandCommands(
-  environment: SandboxRequest["environment"],
-  commands: SandboxCommand[],
-): SandboxCommand[] {
-  if (environment.strategy !== "bootstrap" || !environment.bootstrapCommands?.length) {
-    return commands;
-  }
-
-  const bootstrapSteps = environment.bootstrapCommands.map((cmd, index) => ({
-    name: `bootstrap:${index + 1}`,
-    cmd,
-  }));
-
-  return [...bootstrapSteps, ...commands];
 }
 
 function buildResult(
@@ -236,12 +359,20 @@ function buildResult(
   imageDigest: string,
   startTime: number,
   status: SandboxStatus,
+  options: {
+    failureType?: SandboxFailureType;
+    environmentStrategy?: SandboxResult["environmentStrategy"];
+  } = {},
 ): SandboxResult {
   const failingStep = [...steps].reverse().find((step) => step.exitCode !== 0);
 
   return {
     runId: request.runId,
     status,
+    ...(options.failureType ? { failureType: options.failureType } : {}),
+    ...(options.environmentStrategy
+      ? { environmentStrategy: options.environmentStrategy }
+      : {}),
     sandbox: {
       kind: "docker",
       imageDigest,
@@ -259,10 +390,25 @@ function buildResult(
           ? {
               kind: "nonzero_exit",
               traceExcerptSha256:
-                failingStep.stderrSha256 || failingStep.stdoutSha256 || undefined,
+                failingStep.stderrSha256 ||
+                failingStep.stdoutSha256 ||
+                undefined,
             }
           : undefined,
     totalDurationMs: Date.now() - startTime,
+  };
+}
+
+function buildEnvironmentStrategyRecord(
+  preferredStrategy: SandboxRequest["environment"]["strategy"],
+  plan: Awaited<ReturnType<typeof detectEnvironmentStrategy>>,
+): NonNullable<SandboxResult["environmentStrategy"]> {
+  return {
+    preferred: normalizeStrategy(preferredStrategy) ?? plan.strategy,
+    detected: plan.strategy,
+    fallbacks: getFallbackStrategies(plan.strategy),
+    notes: plan.notes,
+    attempted: plan.strategy,
   };
 }
 
@@ -270,10 +416,16 @@ function sanitizeForFilesystem(value: string): string {
   return value.replace(/[^a-zA-Z0-9_.-]/g, "-");
 }
 
-function stripJsonComments(value: string): string {
-  return value
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
+function buildImageTag(runId: string): string {
+  return `rb-sandbox:${sanitizeForFilesystem(runId)}-${Date.now()}`;
+}
+
+function appendNotes(base: string, extras: string[]): string {
+  if (extras.length === 0) {
+    return base;
+  }
+
+  return `${base} (${extras.join(" ")})`;
 }
 
 function runHostCommand(
@@ -312,7 +464,9 @@ function runHostCommand(
         return;
       }
 
-      const output = Buffer.concat([...stdout, ...stderr]).toString("utf8").trim();
+      const output = Buffer.concat([...stdout, ...stderr])
+        .toString("utf8")
+        .trim();
       const reason = timedOut
         ? `timed out after ${options.timeoutMs}ms`
         : `exited with code ${code ?? "unknown"}`;

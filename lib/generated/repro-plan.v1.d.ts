@@ -11,9 +11,16 @@ export interface ReproPlan {
     sha: string;
   };
   environment_strategy: {
-    preferred: "devcontainer" | "dockerfile" | "repo2run_synth" | "manual_bootstrap";
-    fallbacks: ("devcontainer" | "dockerfile" | "repo2run_synth" | "manual_bootstrap")[];
+    preferred: "devcontainer" | "dockerfile" | "synth_dockerfile" | "bootstrap";
+    detected: "devcontainer" | "dockerfile" | "synth_dockerfile" | "bootstrap";
+    fallbacks: (
+      | "devcontainer"
+      | "dockerfile"
+      | "synth_dockerfile"
+      | "bootstrap"
+    )[];
     notes?: string;
+    image_used?: string;
   };
   /**
    * @minItems 1
@@ -26,7 +33,7 @@ export interface ReproPlan {
     ...{
       cwd: string;
       cmd: string;
-    }[]
+    }[],
   ];
   artifact: {
     type: string;

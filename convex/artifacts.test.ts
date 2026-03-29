@@ -10,12 +10,15 @@ import {
   seedUser,
 } from "./testHelpers";
 
-function buildTriageArtifact(runId: string, overrides: Partial<{
-  confidence: number;
-  labelsSuggested: string[];
-  reproEligible: boolean;
-  summary: string;
-}> = {}) {
+function buildTriageArtifact(
+  runId: string,
+  overrides: Partial<{
+    confidence: number;
+    labelsSuggested: string[];
+    reproEligible: boolean;
+    summary: string;
+  }> = {},
+) {
   return {
     schema_version: "rb.triage.v1" as const,
     run_id: runId,
@@ -49,7 +52,8 @@ function buildTriageArtifact(runId: string, overrides: Partial<{
     },
     repro_eligible: overrides.reproEligible ?? true,
     summary:
-      overrides.summary ?? "The parser crashes on empty YAML input with a ParseError.",
+      overrides.summary ??
+      "The parser crashes on empty YAML input with a ParseError.",
   };
 }
 
@@ -89,9 +93,13 @@ function buildReproPlan() {
       sha: "deadbeef",
     },
     environmentStrategy: {
-      preferred: "dockerfile",
-      fallbacks: ["manual_bootstrap"],
+      preferred: "dockerfile" as const,
+      detected: "dockerfile" as const,
+      fallbacks: ["synth_dockerfile", "bootstrap"] as Array<
+        "synth_dockerfile" | "bootstrap"
+      >,
       notes: "Use the repository Dockerfile first.",
+      imageUsed: "rb-repro-123",
     },
     commands: [
       {
@@ -129,12 +137,20 @@ function buildReproRun() {
       kind: "assertion",
       matchAny: ["expected false to be true"],
     },
+    failureType: "repro_failure" as const,
+    environmentStrategy: {
+      attempted: "dockerfile" as const,
+      detected: "dockerfile" as const,
+      imageUsed: "rb-repro-123",
+    },
     artifactContent: "failing test body",
     durationMs: BigInt(1234),
   };
 }
 
-function buildVerification(verdict: "reproduced" | "not_reproduced" = "reproduced") {
+function buildVerification(
+  verdict: "reproduced" | "not_reproduced" = "reproduced",
+) {
   return {
     schemaVersion: "rb.verification.v1" as const,
     verdict,
@@ -150,8 +166,7 @@ function buildVerification(verdict: "reproduced" | "not_reproduced" = "reproduce
     },
     evidence: {
       failingCmd: "pnpm test",
-      exitCode:
-        verdict === "reproduced" ? BigInt(1) : BigInt(0),
+      exitCode: verdict === "reproduced" ? BigInt(1) : BigInt(0),
       stderrSha256: "b".repeat(64),
     },
     notes: "Verification notes.",
@@ -370,9 +385,11 @@ describe("artifact public mutations and queries", () => {
       runId,
       ...buildReproPlan(),
       environmentStrategy: {
-        preferred: "manual_bootstrap",
-        fallbacks: ["dockerfile"],
+        preferred: "bootstrap" as const,
+        detected: "bootstrap" as const,
+        fallbacks: [],
         notes: "Fallback order changed.",
+        imageUsed: "ubuntu:22.04",
       },
     });
     await asUser.mutation(api.artifacts.storeReproRun, {
@@ -395,7 +412,7 @@ describe("artifact public mutations and queries", () => {
     expect(updatedBundle?.verification?.createdAt).toBe(verificationCreatedAt);
     expect(updatedBundle?.contract?.budgets.wallClockSeconds).toBe(BigInt(900));
     expect(updatedBundle?.plan?.environmentStrategy.preferred).toBe(
-      "manual_bootstrap",
+      "bootstrap",
     );
     expect(updatedBundle?.reproRuns[0]?.artifactContent).toBe(
       "updated failing artifact",

@@ -73,8 +73,10 @@ const validArtifacts = {
     },
     environment_strategy: {
       preferred: "dockerfile",
-      fallbacks: ["manual_bootstrap"],
+      detected: "dockerfile",
+      fallbacks: ["synth_dockerfile", "bootstrap"],
       notes: "Use the repo Dockerfile first.",
+      image_used: "rb-repro-123",
     },
     commands: [
       {
@@ -110,6 +112,12 @@ const validArtifacts = {
       kind: "assertion",
       match_any: ["expected false to be true"],
     },
+    failure_type: "repro_failure",
+    environment_strategy: {
+      attempted: "dockerfile",
+      detected: "dockerfile",
+      image_used: "rb-repro-123",
+    },
     artifact_content: "failing test body",
     duration_ms: 1234,
   },
@@ -137,14 +145,13 @@ const validArtifacts = {
 } as const;
 
 describe("validateArtifact", () => {
-  it.each(SCHEMA_VERSIONS)(
-    "accepts a valid %s artifact",
-    (schemaVersion) => {
-      expect(validateArtifact(schemaVersion, validArtifacts[schemaVersion])).toEqual({
-        valid: true,
-      });
-    },
-  );
+  it.each(SCHEMA_VERSIONS)("accepts a valid %s artifact", (schemaVersion) => {
+    expect(
+      validateArtifact(schemaVersion, validArtifacts[schemaVersion]),
+    ).toEqual({
+      valid: true,
+    });
+  });
 
   it("reports meaningful paths when required fields are missing", () => {
     const result = validateArtifact("rb.triage.v1", {

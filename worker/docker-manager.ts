@@ -54,8 +54,13 @@ export async function buildDockerImage(options: {
   dockerfilePath: string;
   tag: string;
   labels?: Record<string, string>;
+  buildArgs?: Record<string, string>;
 }): Promise<string> {
   const args = ["build", "-q", "-f", options.dockerfilePath, "-t", options.tag];
+
+  for (const [key, value] of Object.entries(options.buildArgs ?? {})) {
+    args.push("--build-arg", `${key}=${value}`);
+  }
 
   for (const [key, value] of Object.entries(options.labels ?? {})) {
     args.push("--label", `${key}=${value}`);
@@ -149,7 +154,9 @@ export async function getImageDigest(imageRef: string): Promise<string> {
   return info.RepoDigests?.[0] ?? info.Id;
 }
 
-export async function cleanupContainer(container: Docker.Container): Promise<void> {
+export async function cleanupContainer(
+  container: Docker.Container,
+): Promise<void> {
   try {
     await container.stop({ t: 0 });
   } catch (error) {
@@ -181,7 +188,12 @@ async function collectStreamOutput(
   const timer = setTimeout(() => {
     timedOut = true;
     void container.kill().catch(() => undefined);
-    stream.destroy(new SandboxTimeoutError("Sandbox command timed out", timeoutSeconds * 1000));
+    stream.destroy(
+      new SandboxTimeoutError(
+        "Sandbox command timed out",
+        timeoutSeconds * 1000,
+      ),
+    );
   }, timeoutSeconds * 1000);
 
   await new Promise<void>((resolve, reject) => {
@@ -307,7 +319,9 @@ function runHostCommand(
         return;
       }
 
-      const output = Buffer.concat([...stdout, ...stderr]).toString("utf8").trim();
+      const output = Buffer.concat([...stdout, ...stderr])
+        .toString("utf8")
+        .trim();
       const reason = timedOut
         ? `timed out after ${options.timeoutMs}ms`
         : `exited with code ${code ?? "unknown"}`;
