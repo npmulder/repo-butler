@@ -56,6 +56,7 @@ export const processApproval = mutation({
         status: "cancelled",
         approvalDecision: "rejected",
         approvalUpdatedAt: now,
+        completedAt: now,
         errorMessage: "Approval rejected from the triage dashboard.",
       });
 

@@ -59,7 +59,7 @@ export function timeAgo(timestamp: number): string {
 }
 
 export function formatTimestamp(value: number | string | null | undefined) {
-  if (!value) {
+  if (value === null || value === undefined || value === "") {
     return "Unavailable";
   }
 

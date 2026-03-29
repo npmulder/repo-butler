@@ -43,6 +43,19 @@ function parseClassificationType(value: string | null) {
     : undefined;
 }
 
+function parseRepoId(
+  value: string | null,
+  repos: Array<{ _id: Id<"repos"> }> | undefined,
+) {
+  if (!value || !repos) {
+    return undefined;
+  }
+
+  return repos.some((repo) => repo._id === value)
+    ? (value as Id<"repos">)
+    : undefined;
+}
+
 function StatCard({
   label,
   tone,
@@ -71,6 +84,7 @@ function StatCard({
 
 export function IssueFeed() {
   const currentUser = useQuery(api.users.getCurrentUser, {});
+  const repos = useQuery(api.dashboard.getRepoList, currentUser ? {} : "skip");
   const searchParams = useSearchParams();
   const repoId = searchParams.get("repoId");
   const status = parseRunStatus(searchParams.get("status"));
@@ -78,26 +92,30 @@ export function IssueFeed() {
     searchParams.get("classificationType"),
   );
   const searchTerm = (searchParams.get("q") ?? "").trim().toLowerCase();
+  const selectedRepoId = parseRepoId(repoId, repos);
+  const canQueryDashboard = currentUser !== undefined && currentUser !== null && repos !== undefined;
 
   const feed = useQuery(
     api.dashboard.getIssueFeed,
-    currentUser
+    canQueryDashboard
       ? {
           classificationType,
-          limit: 80,
-          repoId: (repoId as Id<"repos"> | null) ?? undefined,
+          limit: 50,
+          repoId: selectedRepoId,
           status,
         }
       : "skip",
   );
   const stats = useQuery(
     api.dashboard.getDashboardStats,
-    currentUser
-      ? { repoId: (repoId as Id<"repos"> | null) ?? undefined }
-      : "skip",
+    canQueryDashboard ? { repoId: selectedRepoId } : "skip",
   );
 
-  if (currentUser === undefined || (currentUser && feed === undefined)) {
+  if (
+    currentUser === undefined ||
+    (currentUser && repos === undefined) ||
+    (currentUser && feed === undefined)
+  ) {
     return (
       <Panel className="gap-4 p-6">
         <div className="flex items-center gap-3 text-sm text-muted-foreground">

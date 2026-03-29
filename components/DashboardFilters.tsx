@@ -40,6 +40,17 @@ function buildNextUrl(pathname: string, params: URLSearchParams) {
   return search.length > 0 ? `${pathname}?${search}` : pathname;
 }
 
+function parseRepoId(
+  value: string | null,
+  repos: Array<{ _id: string }> | undefined,
+) {
+  if (!value || !repos) {
+    return undefined;
+  }
+
+  return repos.some((repo) => repo._id === value) ? value : undefined;
+}
+
 export function DashboardFilters() {
   const currentUser = useQuery(api.users.getCurrentUser, {});
   const repos = useQuery(api.dashboard.getRepoList, currentUser ? {} : "skip");
@@ -53,6 +64,7 @@ export function DashboardFilters() {
   const status = searchParams.get("status") ?? "";
   const classificationType = searchParams.get("classificationType") ?? "";
   const [searchDraft, setSearchDraft] = useState(currentSearch);
+  const selectedRepoId = parseRepoId(repoId || null, repos);
 
   useEffect(() => {
     setSearchDraft(currentSearch);
@@ -84,6 +96,27 @@ export function DashboardFilters() {
     };
   }, [currentSearch, pathname, router, searchDraft, searchParams]);
 
+  useEffect(() => {
+    if (!repoId || currentUser == null || repos === undefined || selectedRepoId) {
+      return;
+    }
+
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("repoId");
+
+    startTransition(() => {
+      router.replace(buildNextUrl(pathname, nextParams), { scroll: false });
+    });
+  }, [
+    currentUser,
+    pathname,
+    repoId,
+    repos,
+    router,
+    searchParams,
+    selectedRepoId,
+  ]);
+
   function updateParam(name: string, value: string) {
     const nextParams = new URLSearchParams(searchParams.toString());
 
@@ -101,7 +134,7 @@ export function DashboardFilters() {
   const repoOptions = [...(repos ?? [])].sort((left, right) =>
     left.fullName.localeCompare(right.fullName),
   );
-  const controlsDisabled = currentUser === null || (currentUser && repos === undefined);
+  const controlsDisabled = currentUser == null || repos === undefined;
 
   return (
     <Panel className="gap-5 bg-panel/75 p-5">
@@ -149,7 +182,7 @@ export function DashboardFilters() {
             className={controlClassName}
             disabled={controlsDisabled}
             onChange={(event) => updateParam("repoId", event.target.value)}
-            value={repoId}
+            value={selectedRepoId ?? ""}
           >
             <option value="">All repositories</option>
             {repoOptions.map((repo) => (

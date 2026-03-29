@@ -21,12 +21,15 @@ import {
 } from "next/navigation";
 
 import DashboardPage from "../app/(dashboard)/dashboard/page";
+import { DashboardFilters } from "../components/DashboardFilters";
+import { IssueFeed } from "../components/IssueFeed";
 import { api } from "../convex/_generated/api";
 import type { Doc } from "../convex/_generated/dataModel";
 import { ApprovalActions } from "../components/ApprovalActions";
 import { ConfidenceMeter } from "../components/ConfidenceMeter";
 import { StatusBadge } from "../components/StatusBadge";
 import { TriageCard } from "../components/TriageCard";
+import { formatTimestamp } from "../lib/formatting";
 
 const mockedUseMutation = vi.mocked(useMutation);
 const mockedUsePathname = vi.mocked(usePathname);
@@ -80,6 +83,25 @@ function buildIssue(overrides: Partial<Doc<"issues">> = {}): Doc<"issues"> {
     title: "Parser crash on empty YAML",
     ...overrides,
   } as Doc<"issues">;
+}
+
+function buildRepo(
+  overrides: Partial<Doc<"repos">> = {},
+): Doc<"repos"> {
+  return {
+    _creationTime: 0,
+    _id: "repo_1" as Doc<"repos">["_id"],
+    createdAt: 0,
+    defaultBranch: "main",
+    fullName: "acme/repo",
+    installationId: "inst_1",
+    isActive: true,
+    name: "repo",
+    owner: "acme",
+    updatedAt: 0,
+    userId: "user_1" as Doc<"repos">["userId"],
+    ...overrides,
+  } as Doc<"repos">;
 }
 
 function buildTriage(
@@ -167,6 +189,10 @@ describe("dashboard UI", () => {
     );
   });
 
+  it("formats a zero timestamp instead of treating it as unavailable", () => {
+    expect(formatTimestamp(0)).toContain("1970");
+  });
+
   it("sends approval actions through the approval mutation", async () => {
     const mutate = vi.fn().mockResolvedValue(undefined);
 
@@ -222,19 +248,7 @@ describe("dashboard UI", () => {
 
   it("renders the dashboard page with mocked Convex data", () => {
     const user = buildUser();
-    const repo = {
-      _creationTime: 0,
-      _id: "repo_1",
-      createdAt: 0,
-      defaultBranch: "main",
-      fullName: "acme/repo",
-      installationId: "inst_1",
-      isActive: true,
-      name: "repo",
-      owner: "acme",
-      updatedAt: 0,
-      userId: "user_1",
-    };
+    const repo = buildRepo();
     const run = buildRun({ status: "awaiting_approval" });
     const issue = buildIssue();
     const triage = buildTriage();
@@ -285,5 +299,55 @@ describe("dashboard UI", () => {
       "href",
       "https://github.com/acme/repo/issues/42",
     );
+  });
+
+  it("keeps dashboard filters disabled while auth is still loading", () => {
+    mockedUseQuery.mockImplementation(((reference: unknown) => {
+      if (reference === api.users.getCurrentUser) {
+        return undefined;
+      }
+
+      return undefined;
+    }) as typeof useQuery);
+
+    render(<DashboardFilters />);
+
+    const searchInputs = screen.getAllByPlaceholderText("Search issue titles");
+
+    expect(searchInputs.at(-1)).toBeDisabled();
+    for (const input of screen.getAllByRole("combobox").slice(-3)) {
+      expect(input).toBeDisabled();
+    }
+  });
+
+  it("ignores an invalid repoId URL filter before subscribing to the feed", () => {
+    const user = buildUser();
+    const repo = buildRepo();
+    const stats = {
+      activeSandbox: 0,
+      awaitingApproval: 0,
+      completed: 0,
+      failed: 0,
+      total24h: 0,
+      triaged: 0,
+    };
+
+    mockedUseSearchParams.mockReturnValue(
+      new URLSearchParams("repoId=not-an-id") as never,
+    );
+    mockedUseQuery
+      .mockReturnValueOnce(user as never)
+      .mockReturnValueOnce([repo] as never)
+      .mockReturnValueOnce([] as never)
+      .mockReturnValueOnce(stats as never);
+
+    render(<IssueFeed />);
+
+    expect(mockedUseQuery.mock.calls[2]?.[1]).toEqual(
+      expect.objectContaining({ limit: 50, repoId: undefined }),
+    );
+    expect(
+      screen.getByText("No issues match the current filters"),
+    ).toBeInTheDocument();
   });
 });

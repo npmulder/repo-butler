@@ -47,6 +47,33 @@ function normalizeFeedLimit(limit: number | undefined) {
   return Math.min(Math.max(limit ?? 50, 1), MAX_FEED_LIMIT);
 }
 
+async function loadIssuesById(ctx: QueryCtx, issueIds: Id<"issues">[]) {
+  const issues = await Promise.all(issueIds.map((issueId) => ctx.db.get(issueId)));
+
+  return new Map(issueIds.map((issueId, index) => [issueId, issues[index] ?? null]));
+}
+
+async function loadReposById(ctx: QueryCtx, repoIds: Id<"repos">[]) {
+  const repos = await Promise.all(repoIds.map((repoId) => ctx.db.get(repoId)));
+
+  return new Map(
+    repoIds.map((repoId, index) => {
+      const repo = repos[index];
+
+      return [
+        repoId,
+        repo
+          ? {
+              fullName: repo.fullName,
+              name: repo.name,
+              owner: repo.owner,
+            }
+          : null,
+      ];
+    }),
+  );
+}
+
 async function listRunsForFeed(ctx: QueryCtx, repoId: Id<"repos"> | undefined, limit: number) {
   if (repoId) {
     await requireRepoAccess(ctx, repoId);
@@ -180,27 +207,23 @@ export const getIssueFeed = query({
       args.repoId,
       normalizeFeedLimit(args.limit),
     );
+    const issueIds = [...new Set(runs.map((run) => run.issueId))];
+    const repoIds = [...new Set(runs.map((run) => run.repoId))];
+    const [issuesById, reposById] = await Promise.all([
+      loadIssuesById(ctx, issueIds),
+      loadReposById(ctx, repoIds),
+    ]);
 
     const feed = await Promise.all(
       runs.map(async (run) => {
-        const [issue, triage, repo] = await Promise.all([
-          ctx.db.get(run.issueId),
-          ctx.db
-            .query("triageResults")
-            .withIndex("by_run", (query) => query.eq("runId", run._id))
-            .unique(),
-          ctx.db.get(run.repoId),
-        ]);
+        const triage = await ctx.db
+          .query("triageResults")
+          .withIndex("by_run", (query) => query.eq("runId", run._id))
+          .unique();
 
         return {
-          issue,
-          repo: repo
-            ? {
-                fullName: repo.fullName,
-                name: repo.name,
-                owner: repo.owner,
-              }
-            : null,
+          issue: issuesById.get(run.issueId) ?? null,
+          repo: reposById.get(run.repoId) ?? null,
           run,
           triage,
         };
