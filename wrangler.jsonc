@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "main": ".open-next/worker.js",
+  "name": "repo-butler",
+  "compatibility_date": "2026-02-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      // Self-reference service binding. The service name must match the worker name.
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "repo-butler"
+    }
+  ],
+  "env": {
+    "preview": {
+      "name": "repo-butler-preview",
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "repo-butler-preview"
+        }
+      ]
+    }
+  }
+}

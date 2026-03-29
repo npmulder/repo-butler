@@ -87,3 +87,20 @@ pnpm dev
   deployment for any non-interactive Convex CLI tasks that need deployment
   selection.
 - `.github/workflows/convex-deploy.yml` deploys to Convex when `CONVEX_DEPLOY_KEY` is present.
+- `.github/workflows/deploy-cloudflare.yml` builds the Next.js app with
+  `@opennextjs/cloudflare`, deploys the `preview` Worker environment for
+  pull requests to `main`, and deploys production on pushes to `main`.
+- Required GitHub repository secrets for Cloudflare deployment:
+  - `CLOUDFLARE_API_TOKEN`
+  - `CLOUDFLARE_ACCOUNT_ID`
+- The Cloudflare deploy workflow uses GitHub `preview` and `production`
+  environments for build-time app configuration. Define the existing app values
+  there (`NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_WORKOS_REDIRECT_URI`,
+  `NEXT_PUBLIC_GITHUB_APP_SLUG`, `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, and
+  `WORKOS_COOKIE_PASSWORD`) so the Worker build uses real values for each
+  environment.
+- Worker deployments run with `wrangler deploy --keep-vars`, so runtime vars and
+  secrets that are already managed in Cloudflare are preserved instead of being
+  deleted during each GitHub Actions deploy.
+- GitHub does not expose repository secrets to workflows triggered from forked
+  pull requests, so preview deploys only run for branches in this repository.
