@@ -14,6 +14,8 @@ import {
   DEFAULT_MAX_TOKENS,
   MODELS,
   getAnthropicClient,
+  getLlmProvider,
+  type LlmProvider,
   type TriageInput,
 } from "../lib/claude";
 import {
@@ -31,21 +33,169 @@ import {
 const RETRY_DELAYS_MS = [1000, 3000, 5000] as const;
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
+type RetryDecision = {
+  llmProvider: LlmProvider;
+  status?: number;
+  code?: number | string;
+  message: string;
+  providerName?: string;
+  exhaustedProviders: boolean;
+  retryable: boolean;
+};
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
 }
 
-function isRetryableClaudeError(error: unknown): boolean {
-  if (error instanceof APIConnectionError || error instanceof RateLimitError) {
-    return true;
-  }
-
-  return error instanceof APIError && RETRYABLE_STATUSES.has(error.status ?? 0);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
-function formatErrorMessage(error: unknown): string {
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function readCode(value: unknown): number | string | undefined {
+  return typeof value === "number" || typeof value === "string" ? value : undefined;
+}
+
+function getErrorPayload(
+  error: unknown,
+  llmProvider: LlmProvider,
+): Record<string, unknown> | undefined {
+  const rawPayload =
+    error instanceof APIError && isRecord(error.error)
+      ? error.error
+      : isRecord(error) && isRecord(error.error)
+        ? error.error
+        : undefined;
+
+  if (!rawPayload) {
+    return undefined;
+  }
+
+  if (llmProvider === "openrouter") {
+    if (isRecord(rawPayload.error)) {
+      return rawPayload.error;
+    }
+
+    if (isRecord(rawPayload.response) && isRecord(rawPayload.response.error)) {
+      return rawPayload.response.error;
+    }
+  }
+
+  return rawPayload;
+}
+
+function getProviderName(
+  error: unknown,
+  payload: Record<string, unknown> | undefined,
+): string | undefined {
+  if (payload && isRecord(payload.metadata)) {
+    const providerName = readString(payload.metadata.provider_name);
+
+    if (providerName) {
+      return providerName;
+    }
+  }
+
+  if (isRecord(error)) {
+    return readString(error.provider);
+  }
+
+  return undefined;
+}
+
+function getRetryDecision(
+  error: unknown,
+  llmProvider: LlmProvider,
+): RetryDecision {
+  const payload = getErrorPayload(error, llmProvider);
+  const status =
+    error instanceof APIError && error.status !== undefined
+      ? error.status
+      : isRecord(error) && typeof error.status === "number"
+        ? error.status
+        : isRecord(error) && typeof error.statusCode === "number"
+          ? error.statusCode
+          : typeof payload?.code === "number"
+            ? payload.code
+            : undefined;
+  const code = readCode(payload?.code);
+  const message =
+    readString(payload?.message) ??
+    (error instanceof Error ? error.message : undefined) ??
+    "Unknown triage error";
+  const lowerMessage = message.toLowerCase();
+  const lowerCode = typeof code === "string" ? code.toLowerCase() : undefined;
+  const exhaustedProviders =
+    llmProvider === "openrouter" &&
+    (status === 503 ||
+      code === 503 ||
+      lowerMessage.includes("all providers exhausted") ||
+      lowerMessage.includes("no available model provider"));
+  const retryable =
+    error instanceof APIConnectionError ||
+    error instanceof RateLimitError ||
+    (llmProvider === "openrouter"
+      ? !exhaustedProviders &&
+        ((status !== undefined && RETRYABLE_STATUSES.has(status)) ||
+          status === 429 ||
+          code === 429 ||
+          lowerCode === "rate_limit_exceeded" ||
+          lowerMessage.includes("rate limit"))
+      : error instanceof APIError && RETRYABLE_STATUSES.has(status ?? 0));
+
+  return {
+    llmProvider,
+    status,
+    code,
+    message,
+    providerName: getProviderName(error, payload),
+    exhaustedProviders,
+    retryable,
+  };
+}
+
+function formatErrorMessage(error: unknown, decision: RetryDecision): string {
+  if (decision.llmProvider === "anthropic") {
+    if (error instanceof APIError && error.status !== undefined) {
+      return `Claude API error (${error.status}): ${error.message}`;
+    }
+
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return "Unknown triage error";
+  }
+
+  if (decision.status !== undefined) {
+    return `OpenRouter API error (${decision.status}): ${decision.message}`;
+  }
+
+  if (decision.message) {
+    return `OpenRouter error: ${decision.message}`;
+  }
+
+  return "Unknown triage error";
+}
+
+function buildLogContext(decision: RetryDecision): Record<string, unknown> {
+  return {
+    llmProvider: decision.llmProvider,
+    status: decision.status,
+    code: decision.code,
+    providerName: decision.providerName,
+    exhaustedProviders: decision.exhaustedProviders,
+    retryable: decision.retryable,
+    message: decision.message,
+  };
+}
+
+function formatErrorMessageLegacy(error: unknown): string {
   if (error instanceof APIError && error.status !== undefined) {
     return `Claude API error (${error.status}): ${error.message}`;
   }
@@ -92,6 +242,7 @@ function buildTriageInput(
 
 async function requestTriageAssessment(input: TriageInput) {
   const client = getAnthropicClient();
+  const llmProvider = getLlmProvider();
 
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
     try {
@@ -113,15 +264,20 @@ async function requestTriageAssessment(input: TriageInput) {
         ],
       });
     } catch (error) {
-      if (!isRetryableClaudeError(error) || attempt === RETRY_DELAYS_MS.length) {
+      const decision = getRetryDecision(error, llmProvider);
+
+      if (!decision.retryable || attempt === RETRY_DELAYS_MS.length) {
         throw error;
       }
 
       const delayMs = RETRY_DELAYS_MS[attempt];
       console.warn(
-        `[pipeline] Retrying triage request after ${delayMs}ms (attempt ${attempt + 1}): ${formatErrorMessage(
-          error,
-        )}`,
+        `[pipeline] Retrying triage request after ${delayMs}ms (attempt ${attempt + 1})`,
+        {
+          attempt: attempt + 1,
+          delayMs,
+          ...buildLogContext(decision),
+        },
       );
       await sleep(delayMs);
     }
@@ -252,9 +408,16 @@ export const runTriage = internalAction({
         });
       }
     } catch (error) {
-      const errorMessage = formatErrorMessage(error);
+      const decision = getRetryDecision(error, getLlmProvider());
+      const errorMessage =
+        decision.llmProvider === "anthropic"
+          ? formatErrorMessageLegacy(error)
+          : formatErrorMessage(error, decision);
 
-      console.error(`[pipeline] Triage failed for run ${args.runId}: ${errorMessage}`);
+      console.error(
+        `[pipeline] Triage failed for run ${args.runId}: ${errorMessage}`,
+        buildLogContext(decision),
+      );
 
       await ctx.runMutation(internal.runs.updateStatus, {
         runId: args.runId,

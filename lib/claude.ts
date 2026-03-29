@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-type LlmProvider = "anthropic" | "openrouter";
+export type LlmProvider = "anthropic" | "openrouter";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
 
@@ -16,7 +16,7 @@ function getRequiredEnvVar(name: "ANTHROPIC_API_KEY" | "OPENROUTER_API_KEY"): st
   return value;
 }
 
-function getLlmProvider(): LlmProvider {
+export function getLlmProvider(): LlmProvider {
   const provider = process.env.LLM_PROVIDER?.trim().toLowerCase();
 
   if (!provider || provider === "anthropic") {

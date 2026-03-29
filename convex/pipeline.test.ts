@@ -27,6 +27,7 @@ const anthropicState = vi.hoisted(() => {
 
   return {
     create: vi.fn(),
+    provider: "anthropic" as "anthropic" | "openrouter",
     MockAPIError,
     MockRateLimitError,
     MockAPIConnectionError,
@@ -49,6 +50,7 @@ vi.mock("../lib/claude", () => {
       reproduce: "claude-sonnet-4-20250514",
       verify: "claude-sonnet-4-20250514",
     },
+    getLlmProvider: () => anthropicState.provider,
     getAnthropicClient: () => ({
       messages: {
         create: anthropicState.create,
@@ -127,6 +129,33 @@ function buildClaudeResponse({
   };
 }
 
+function buildOpenRouterError({
+  status,
+  message,
+  metadata,
+}: {
+  status: number;
+  message: string;
+  metadata?: Record<string, unknown>;
+}): Error & {
+  status: number;
+  error: {
+    code: number;
+    message: string;
+    metadata?: Record<string, unknown>;
+  };
+} {
+  return Object.assign(new Error(message), {
+    name: "OpenRouterError",
+    status,
+    error: {
+      code: status,
+      message,
+      ...(metadata ? { metadata } : {}),
+    },
+  });
+}
+
 async function setupPipelineFixture() {
   const t = createTestConvex();
   const { userId } = await seedUser(t);
@@ -148,6 +177,7 @@ async function setupPipelineFixture() {
 
 beforeEach(() => {
   anthropicState.create.mockReset();
+  anthropicState.provider = "anthropic";
   vi.useRealTimers();
 });
 
@@ -264,6 +294,83 @@ describe("pipeline.runTriage", () => {
       expect(run?.status).toBe("awaiting_approval");
     },
   );
+
+  it("retries OpenRouter rate limit errors surfaced as generic error payloads", async () => {
+    vi.useFakeTimers();
+    anthropicState.provider = "openrouter";
+    anthropicState.create
+      .mockRejectedValueOnce(
+        buildOpenRouterError({
+          status: 429,
+          message: "Rate limit exceeded",
+          metadata: {
+            provider_name: "anthropic",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(buildClaudeResponse());
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { t, runId, issueId } = await setupPipelineFixture();
+
+    const actionPromise = t.action(internal.pipeline.runTriage, { runId, issueId });
+    await vi.runAllTimersAsync();
+    await actionPromise;
+
+    const run = await t.run(async (ctx) => await ctx.db.get(runId));
+
+    expect(anthropicState.create).toHaveBeenCalledTimes(2);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[pipeline] Retrying triage request"),
+      expect.objectContaining({
+        llmProvider: "openrouter",
+        providerName: "anthropic",
+        retryable: true,
+        status: 429,
+      }),
+    );
+    expect(run?.status).toBe("awaiting_approval");
+
+    warnSpy.mockRestore();
+  });
+
+  it("fails immediately when OpenRouter reports provider exhaustion", async () => {
+    vi.useFakeTimers();
+    anthropicState.provider = "openrouter";
+    anthropicState.create
+      .mockRejectedValueOnce(
+        new anthropicState.MockAPIError(
+          503,
+          "No available model provider that meets your routing requirements",
+        ),
+      )
+      .mockResolvedValueOnce(buildClaudeResponse());
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { t, runId, issueId } = await setupPipelineFixture();
+
+    const actionPromise = t.action(internal.pipeline.runTriage, { runId, issueId });
+    await vi.runAllTimersAsync();
+    await actionPromise;
+
+    const run = await t.run(async (ctx) => await ctx.db.get(runId));
+
+    expect(anthropicState.create).toHaveBeenCalledTimes(1);
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[pipeline] Triage failed"),
+      expect.objectContaining({
+        llmProvider: "openrouter",
+        retryable: false,
+        status: 503,
+      }),
+    );
+    expect(run).toMatchObject({
+      status: "failed",
+    });
+
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
 
   it("fails immediately for non-retryable errors", async () => {
     anthropicState.create.mockRejectedValueOnce(
