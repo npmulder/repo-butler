@@ -38,6 +38,8 @@ jobs:
             exit 0
           fi
 
+          pnpm exec convex env set WORKOS_CLIENT_ID "$WORKOS_CLIENT_ID"
+          pnpm exec convex env set WORKOS_API_KEY "$WORKOS_API_KEY"
           pnpm exec convex deploy
           printf 'deployment_state=deployed\n' >> "$GITHUB_OUTPUT"
       - name: Write deploy summary
