@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { buildDockerImage } from "./docker-manager";
+import { resolvePathWithinRepo } from "./repo-paths";
 
 export async function buildFromDockerfile(
   repoDir: string,
@@ -10,9 +11,15 @@ export async function buildFromDockerfile(
     labels?: Record<string, string>;
   },
 ): Promise<string> {
+  const resolvedRepoDir = path.resolve(repoDir);
+
   return await buildDockerImage({
-    contextDir: repoDir,
-    dockerfilePath: path.resolve(repoDir, dockerfilePath),
+    contextDir: resolvedRepoDir,
+    dockerfilePath: resolvePathWithinRepo(
+      resolvedRepoDir,
+      dockerfilePath,
+      "Dockerfile path",
+    ),
     tag: options.tag,
     labels: options.labels,
   });

@@ -252,11 +252,15 @@ async function resolveImage(
 ): Promise<ResolvedEnvironment> {
   switch (plan.strategy) {
     case "devcontainer": {
+      if (!plan.devcontainerPath) {
+        throw new Error(
+          "Expected detectEnvironmentStrategy to return a devcontainer path",
+        );
+      }
+
       const result = await buildFromDevcontainer(
         repoDir,
-        plan.dockerfilePath ??
-          environment.devcontainerPath ??
-          ".devcontainer/devcontainer.json",
+        plan.devcontainerPath,
         {
           tag: buildImageTag(runId),
           labels,
@@ -278,9 +282,15 @@ async function resolveImage(
     }
 
     case "dockerfile": {
+      if (!plan.dockerfilePath) {
+        throw new Error(
+          "Expected detectEnvironmentStrategy to return a Dockerfile path",
+        );
+      }
+
       const image = await buildFromDockerfile(
         repoDir,
-        plan.dockerfilePath ?? environment.dockerfilePath ?? "Dockerfile",
+        plan.dockerfilePath,
         {
           tag: buildImageTag(runId),
           labels,

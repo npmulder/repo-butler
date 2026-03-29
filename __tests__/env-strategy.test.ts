@@ -4,16 +4,32 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+
+const dockerManagerMocks = vi.hoisted(() => ({
+  buildDockerImage: vi.fn(async ({ tag }: { tag: string }) => tag),
+  ensureImageAvailable: vi.fn(async () => undefined),
+}));
+
+vi.mock("../worker/docker-manager", () => dockerManagerMocks);
 
 import {
   detectProject,
   synthesizeDockerfile,
 } from "../worker/bootstrap-builder";
 import {
+  buildFromDevcontainer,
   parseDevcontainerConfig,
   stripJsonComments,
 } from "../worker/devcontainer-builder";
+import { buildFromDockerfile } from "../worker/dockerfile-builder";
 import {
   detectEnvironmentStrategy,
   selectBaseImage,
@@ -29,6 +45,11 @@ afterEach(async () => {
   );
 });
 
+beforeEach(() => {
+  dockerManagerMocks.buildDockerImage.mockClear();
+  dockerManagerMocks.ensureImageAvailable.mockClear();
+});
+
 describe("detectEnvironmentStrategy", () => {
   it("detects a devcontainer in the default location", async () => {
     const repoDir = await createTempRepo({
@@ -38,9 +59,8 @@ describe("detectEnvironmentStrategy", () => {
     const plan = await detectEnvironmentStrategy(repoDir);
 
     expect(plan.strategy).toBe("devcontainer");
-    expect(plan.dockerfilePath).toBe(
-      path.join(repoDir, ".devcontainer/devcontainer.json"),
-    );
+    expect(plan.devcontainerPath).toBe(".devcontainer/devcontainer.json");
+    expect(plan.dockerfilePath).toBeUndefined();
     expect(plan.notes).toContain(".devcontainer/devcontainer.json");
   });
 
@@ -52,7 +72,7 @@ describe("detectEnvironmentStrategy", () => {
     const plan = await detectEnvironmentStrategy(repoDir);
 
     expect(plan.strategy).toBe("dockerfile");
-    expect(plan.dockerfilePath).toBe(path.join(repoDir, "Dockerfile"));
+    expect(plan.dockerfilePath).toBe("Dockerfile");
   });
 
   it("detects a Python project for synthesized Dockerfile generation", async () => {
@@ -155,6 +175,18 @@ describe("detectEnvironmentStrategy", () => {
 
     expect(plan.strategy).toBe("devcontainer");
   });
+
+  it("rejects an absolute hint path that escapes the repository contract", async () => {
+    const repoDir = await createTempRepo({
+      ".devcontainer/devcontainer.json": '{ "image": "node:20-slim" }',
+    });
+
+    await expect(
+      detectEnvironmentStrategy(repoDir, {
+        devcontainerPath: "/tmp/escape/devcontainer.json",
+      }),
+    ).rejects.toThrow(/absolute paths are not allowed/);
+  });
 });
 
 describe("devcontainer parsing", () => {
@@ -221,6 +253,65 @@ describe("Dockerfile synthesis", () => {
     expect(selectBaseImage({ language: "typescript", runtime: "22" })).toBe(
       "node:22-slim",
     );
+  });
+});
+
+describe("builder path safety", () => {
+  it("rejects Dockerfile paths outside the repository", async () => {
+    const repoDir = await createTempRepo({
+      Dockerfile: "FROM node:20-slim\n",
+    });
+
+    await expect(
+      buildFromDockerfile(repoDir, "../outside.Dockerfile", { tag: "rb-test" }),
+    ).rejects.toThrow(/outside the repository/);
+    expect(dockerManagerMocks.buildDockerImage).not.toHaveBeenCalled();
+  });
+
+  it("allows devcontainer build paths that normalize back inside the repository", async () => {
+    const repoDir = await createTempRepo({
+      ".devcontainer/devcontainer.json": JSON.stringify({
+        build: {
+          context: "..",
+          dockerfile: "../Dockerfile",
+        },
+      }),
+      "Dockerfile": "FROM node:20-slim\n",
+    });
+
+    const image = await buildFromDevcontainer(
+      repoDir,
+      ".devcontainer/devcontainer.json",
+      { tag: "rb-devcontainer-test" },
+    );
+
+    expect(image.image).toBe("rb-devcontainer-test");
+    expect(dockerManagerMocks.buildDockerImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contextDir: repoDir,
+        dockerfilePath: path.join(repoDir, "Dockerfile"),
+        tag: "rb-devcontainer-test",
+      }),
+    );
+  });
+
+  it("rejects devcontainer build paths that escape the repository", async () => {
+    const repoDir = await createTempRepo({
+      ".devcontainer/devcontainer.json": JSON.stringify({
+        build: {
+          context: "../../..",
+          dockerfile: "../Dockerfile",
+        },
+      }),
+      "Dockerfile": "FROM node:20-slim\n",
+    });
+
+    await expect(
+      buildFromDevcontainer(repoDir, ".devcontainer/devcontainer.json", {
+        tag: "rb-devcontainer-test",
+      }),
+    ).rejects.toThrow(/outside the repository/);
+    expect(dockerManagerMocks.buildDockerImage).not.toHaveBeenCalled();
   });
 });
 

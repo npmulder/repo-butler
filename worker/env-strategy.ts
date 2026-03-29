@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { detectProject, getGeneratedDockerfilePath } from "./bootstrap-builder";
+import { detectProject, GENERATED_DOCKERFILE_NAME } from "./bootstrap-builder";
+import {
+  normalizeRepoRelativePath,
+  resolvePathWithinRepo,
+} from "./repo-paths";
 
 export type StrategyType =
   | "devcontainer"
@@ -12,6 +16,7 @@ export type StrategyType =
 export interface EnvironmentPlan {
   strategy: StrategyType;
   image?: string;
+  devcontainerPath?: string;
   dockerfilePath?: string;
   buildContext?: string;
   notes: string;
@@ -34,25 +39,41 @@ export async function detectEnvironmentStrategy(
   },
 ): Promise<EnvironmentPlan> {
   const devcontainerPaths = uniquePaths([
-    hints?.devcontainerPath,
+    hints?.devcontainerPath
+      ? normalizeRepoRelativePath(
+          repoDir,
+          hints.devcontainerPath,
+          "devcontainer path hint",
+        )
+      : undefined,
     ".devcontainer/devcontainer.json",
     ".devcontainer.json",
   ]);
 
   for (const relativePath of devcontainerPaths) {
-    const fullPath = path.join(repoDir, relativePath);
+    const fullPath = resolvePathWithinRepo(
+      repoDir,
+      relativePath,
+      "devcontainer path",
+    );
     if (await fileExists(fullPath)) {
       return {
         strategy: "devcontainer",
-        dockerfilePath: fullPath,
-        buildContext: path.dirname(fullPath),
+        devcontainerPath: relativePath,
+        buildContext: path.posix.dirname(relativePath),
         notes: `Found devcontainer at ${relativePath}`,
       };
     }
   }
 
   const dockerfilePaths = uniquePaths([
-    hints?.dockerfilePath,
+    hints?.dockerfilePath
+      ? normalizeRepoRelativePath(
+          repoDir,
+          hints.dockerfilePath,
+          "Dockerfile path hint",
+        )
+      : undefined,
     "Dockerfile",
     "docker/Dockerfile",
     ".docker/Dockerfile",
@@ -60,12 +81,16 @@ export async function detectEnvironmentStrategy(
   ]);
 
   for (const relativePath of dockerfilePaths) {
-    const fullPath = path.join(repoDir, relativePath);
+    const fullPath = resolvePathWithinRepo(
+      repoDir,
+      relativePath,
+      "Dockerfile path",
+    );
     if (await fileExists(fullPath)) {
       return {
         strategy: "dockerfile",
-        dockerfilePath: fullPath,
-        buildContext: repoDir,
+        dockerfilePath: relativePath,
+        buildContext: ".",
         notes: `Found Dockerfile at ${relativePath}`,
       };
     }
@@ -75,8 +100,8 @@ export async function detectEnvironmentStrategy(
   if (project) {
     return {
       strategy: "synth_dockerfile",
-      dockerfilePath: getGeneratedDockerfilePath(repoDir),
-      buildContext: repoDir,
+      dockerfilePath: GENERATED_DOCKERFILE_NAME,
+      buildContext: ".",
       notes: `Synthesizing Dockerfile for detected ${project.language} project (${project.packageManager})`,
     };
   }

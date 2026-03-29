@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { buildDockerImage, ensureImageAvailable } from "./docker-manager";
+import { resolvePathWithinRepo } from "./repo-paths";
 
 export interface DevcontainerConfig {
   image?: string;
@@ -32,7 +33,11 @@ export async function buildFromDevcontainer(
     labels?: Record<string, string>;
   },
 ): Promise<DevcontainerBuildResult> {
-  const resolvedConfigPath = path.resolve(repoDir, devcontainerPath);
+  const resolvedConfigPath = resolvePathWithinRepo(
+    repoDir,
+    devcontainerPath,
+    "devcontainer config path",
+  );
   const config = await readDevcontainerConfig(resolvedConfigPath);
   const notes: string[] = [];
   const setupCommands = getPostCreateCommands(config);
@@ -63,12 +68,21 @@ export async function buildFromDevcontainer(
   }
 
   const contextDir = path.resolve(
-    configDir,
-    config.build?.context ?? config.context ?? ".",
+    resolvePathWithinRepo(
+      repoDir,
+      config.build?.context ?? config.context ?? ".",
+      "devcontainer build context",
+      { baseDir: configDir, allowRepoRoot: true },
+    ),
   );
   const image = await buildDockerImage({
     contextDir,
-    dockerfilePath: path.resolve(configDir, dockerfilePath),
+    dockerfilePath: resolvePathWithinRepo(
+      repoDir,
+      dockerfilePath,
+      "devcontainer Dockerfile path",
+      { baseDir: configDir },
+    ),
     tag: options.tag,
     labels: options.labels,
     buildArgs: config.build?.args,
