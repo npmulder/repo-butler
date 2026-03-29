@@ -299,6 +299,41 @@ describe("reproducer feedback analysis", () => {
     ).toBe("All commands succeeded - expected failure signal did not appear");
   });
 
+  it("builds feedback from the failing step when later steps succeed", () => {
+    const feedback = buildReproducerFeedback({
+      ...buildSandboxResult(),
+      steps: [
+        {
+          name: "run_test",
+          cmd: "npx vitest run repro-issue-42.test.ts",
+          exitCode: 1,
+          stdoutSha256: "a".repeat(64),
+          stderrSha256: "b".repeat(64),
+          durationMs: 1234,
+          stdoutTail: "",
+          stderrTail: "ModuleNotFoundError: parser",
+        },
+        {
+          name: "cleanup",
+          cmd: "echo cleanup",
+          exitCode: 0,
+          stdoutSha256: "c".repeat(64),
+          stderrSha256: "d".repeat(64),
+          durationMs: 10,
+          stdoutTail: "cleanup complete",
+          stderrTail: "",
+        },
+      ],
+    });
+
+    expect(feedback).toEqual({
+      exitCode: 1,
+      stderrTail: "ModuleNotFoundError: parser",
+      stdoutTail: "",
+      failureAnalysis: "Import error - missing module or incorrect path",
+    });
+  });
+
   it("builds feedback and matches the expected failure signal", () => {
     const sandboxResult = buildSandboxResult({
       stderrTail: "ParseError: unexpected end of input",

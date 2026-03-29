@@ -417,12 +417,15 @@ export function analyzeSandboxFailure(result: SandboxResult): string {
 export function buildReproducerFeedback(
   result: SandboxResult,
 ): ReproducerFeedback {
-  const lastStep = result.steps[result.steps.length - 1];
+  const fallbackStep = result.steps[result.steps.length - 1];
+  const feedbackStep =
+    [...result.steps].reverse().find((step) => step.exitCode !== 0) ??
+    fallbackStep;
 
   return {
-    exitCode: lastStep?.exitCode ?? -1,
-    stderrTail: truncateOutputTail(lastStep?.stderrTail ?? ""),
-    stdoutTail: truncateOutputTail(lastStep?.stdoutTail ?? ""),
+    exitCode: feedbackStep?.exitCode ?? -1,
+    stderrTail: truncateOutputTail(feedbackStep?.stderrTail ?? ""),
+    stdoutTail: truncateOutputTail(feedbackStep?.stdoutTail ?? ""),
     failureAnalysis: analyzeSandboxFailure(result),
   };
 }

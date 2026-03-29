@@ -362,15 +362,19 @@ async function loadRunContext(
     throw new Error(`Run ${runId} does not belong to issue ${issueId}`);
   }
 
+  const expectedIssueId = issueId ?? run.issueId;
+
   const issue: Doc<"issues"> | null = await ctx.runQuery(internal.issues.getById, {
     issueId: run.issueId,
   });
   if (!issue) {
-    throw new Error(`Issue ${issueId} not found`);
+    throw new Error(`Issue ${expectedIssueId} not found`);
   }
 
   if (issue.repoId !== run.repoId) {
-    throw new Error(`Issue ${issueId} does not belong to run ${runId}'s repository`);
+    throw new Error(
+      `Issue ${expectedIssueId} does not belong to run ${runId}'s repository`,
+    );
   }
 
   const repo: Doc<"repos"> | null = await ctx.runQuery(internal.repos.getById, {
