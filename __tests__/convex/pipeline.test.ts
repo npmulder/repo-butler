@@ -51,7 +51,7 @@ vi.mock("@anthropic-ai/sdk", () => {
   };
 });
 
-vi.mock("../lib/claude", () => {
+vi.mock("@/lib/claude", () => {
   return {
     DEFAULT_MAX_TOKENS: 4096,
     MODELS: {
@@ -69,13 +69,13 @@ vi.mock("../lib/claude", () => {
   };
 });
 
-vi.mock("../lib/sandbox-client", () => {
+vi.mock("@/lib/sandbox-client", () => {
   return {
     executeSandbox: sandboxState.execute,
   };
 });
 
-vi.mock("../lib/githubApp", () => {
+vi.mock("@/lib/githubApp", () => {
   return {
     getInstallationOctokit: vi.fn(async () => ({
       rest: {
@@ -87,8 +87,8 @@ vi.mock("../lib/githubApp", () => {
   };
 });
 
-import { internal } from "./_generated/api";
-import { sampleTriageArtifacts } from "../__tests__/fixtures/sample-triage";
+import { internal } from "@/convex/_generated/api";
+import { sampleTriageArtifacts } from "@/__tests__/fixtures/sample-triage";
 import {
   createTestConvex,
   seedInstallation,
@@ -97,7 +97,10 @@ import {
   seedRun,
   seedUser,
 } from "@/test-support/convex/testHelpers";
-import type { ReproArtifactToolOutput, ReproPlanToolOutput } from "../lib/repro-parser";
+import type {
+  ReproArtifactToolOutput,
+  ReproPlanToolOutput,
+} from "@/lib/repro-parser";
 
 function buildClaudeResponse({
   reproEligible = true,
