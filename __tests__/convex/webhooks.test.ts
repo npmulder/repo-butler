@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { internal } from "./_generated/api";
+import { internal } from "@/convex/_generated/api";
 import {
   createTestConvex,
   seedInstallation,
