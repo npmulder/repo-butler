@@ -101,7 +101,13 @@ export function validateGitHubInstallState(
     return false;
   }
 
-  const expectedSignature = signInstallState(payload);
+  let expectedSignature: string;
+
+  try {
+    expectedSignature = signInstallState(payload);
+  } catch {
+    return false;
+  }
 
   if (
     signature.length !== expectedSignature.length ||
