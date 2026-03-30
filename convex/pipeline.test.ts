@@ -75,7 +75,7 @@ vi.mock("../lib/sandbox-client", () => {
   };
 });
 
-vi.mock("../lib/github", () => {
+vi.mock("../lib/githubApp", () => {
   return {
     getInstallationOctokit: vi.fn(async () => ({
       rest: {
