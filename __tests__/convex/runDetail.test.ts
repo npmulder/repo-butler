@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { api } from "./_generated/api";
+import { api } from "@/convex/_generated/api";
 import {
   createTestConvex,
   seedInstallation,
   seedIssue,
   seedRepo,
-  seedUser,
   seedRun,
-} from "./testHelpers";
+  seedUser,
+} from "@/test-support/convex/testHelpers";
 
 describe("runDetail query", () => {
   it("returns the latest repro iterations within the bounded detail view", async () => {
