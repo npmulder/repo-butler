@@ -18,6 +18,7 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["__tests__/**/*.test.{ts,tsx}"],
+          exclude: ["__tests__/convex/**"],
           environment: "jsdom",
           setupFiles: ["./vitest.setup.ts"],
         },
