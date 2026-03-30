@@ -20,7 +20,7 @@ import {
   type LlmProvider,
   type TriageInput,
 } from "../lib/claude";
-import { getInstallationOctokit } from "../lib/github";
+import { getInstallationOctokit } from "../lib/githubApp";
 import {
   TRIAGE_SYSTEM_PROMPT,
   TRIAGE_TOOL_DEFINITION,
