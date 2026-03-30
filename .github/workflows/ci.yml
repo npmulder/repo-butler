@@ -23,6 +23,8 @@ jobs:
       - run: pnpm validate:schemas
       - run: pnpm lint
       - run: pnpm tsc --noEmit
+      - run: pnpm test:unit
+      - run: pnpm test:convex
       - run: pnpm build
         env:
           NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud

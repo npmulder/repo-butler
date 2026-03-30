@@ -1,0 +1,10 @@
+{
+  "name": "toy-sandbox-repo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "tsx --test tests/parser.repro.ts tests/passing.repro.ts",
+    "test:fail": "tsx --test tests/parser.repro.ts",
+    "test:pass": "tsx --test tests/passing.repro.ts"
+  }
+}

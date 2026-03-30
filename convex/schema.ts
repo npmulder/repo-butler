@@ -64,6 +64,41 @@ const verdictValidator = v.union(
   v.literal("budget_exhausted"),
 );
 
+const environmentStrategyNameValidator = v.union(
+  v.literal("devcontainer"),
+  v.literal("dockerfile"),
+  v.literal("synth_dockerfile"),
+  v.literal("bootstrap"),
+);
+
+// Accept legacy values during the schema transition so existing stored artifacts remain valid.
+const storedEnvironmentStrategyNameValidator = v.union(
+  environmentStrategyNameValidator,
+  v.literal("repo2run_synth"),
+  v.literal("manual_bootstrap"),
+);
+
+const reproPlanEnvironmentStrategyValidator = v.object({
+  preferred: storedEnvironmentStrategyNameValidator,
+  detected: v.optional(storedEnvironmentStrategyNameValidator),
+  fallbacks: v.array(storedEnvironmentStrategyNameValidator),
+  notes: v.optional(v.string()),
+  imageUsed: v.optional(v.string()),
+});
+
+const reproRunFailureTypeValidator = v.union(
+  v.literal("env_setup"),
+  v.literal("repro_failure"),
+);
+
+const reproRunEnvironmentStrategyValidator = v.object({
+  attempted: environmentStrategyNameValidator,
+  detected: v.optional(environmentStrategyNameValidator),
+  failedAt: v.optional(v.string()),
+  notes: v.optional(v.string()),
+  imageUsed: v.optional(v.string()),
+});
+
 export default defineSchema({
   users: defineTable({
     workosId: v.string(),
@@ -295,11 +330,7 @@ export default defineSchema({
       ref: v.string(),
       sha: v.string(),
     }),
-    environmentStrategy: v.object({
-      preferred: v.string(),
-      fallbacks: v.array(v.string()),
-      notes: v.optional(v.string()),
-    }),
+    environmentStrategy: reproPlanEnvironmentStrategyValidator,
     commands: v.array(
       v.object({
         cwd: v.string(),
@@ -332,6 +363,8 @@ export default defineSchema({
         traceExcerptSha256: v.optional(v.string()),
       }),
     ),
+    failureType: v.optional(reproRunFailureTypeValidator),
+    environmentStrategy: v.optional(reproRunEnvironmentStrategyValidator),
     artifactContent: v.optional(v.string()),
     logStorageId: v.optional(v.id("_storage")),
     durationMs: v.int64(),

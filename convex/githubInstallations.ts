@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { requireCurrentUser } from "./lib/auth";
 
 const permissionsValidator = v.record(v.string(), v.string());
@@ -37,6 +37,13 @@ export const getByInstallationId = query({
     }
 
     return installation;
+  },
+});
+
+export const getById = internalQuery({
+  args: { installationId: v.id("githubInstallations") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.installationId);
   },
 });
 

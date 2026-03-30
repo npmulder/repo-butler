@@ -22,9 +22,22 @@ export interface ReproRun {
     duration_ms?: number;
   }[];
   failure_observed?: {
-    kind: "exception" | "assertion" | "nonzero_exit" | "snapshot_diff" | "timeout";
+    kind:
+      | "exception"
+      | "assertion"
+      | "nonzero_exit"
+      | "snapshot_diff"
+      | "timeout";
     match_any?: string[];
     trace_excerpt_sha256?: string;
+  };
+  failure_type?: "env_setup" | "repro_failure";
+  environment_strategy?: {
+    attempted: "devcontainer" | "dockerfile" | "synth_dockerfile" | "bootstrap";
+    detected?: "devcontainer" | "dockerfile" | "synth_dockerfile" | "bootstrap";
+    failed_at?: string;
+    notes?: string;
+    image_used?: string;
   };
   artifact_content?: string;
   duration_ms: number;

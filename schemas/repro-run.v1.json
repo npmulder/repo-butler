@@ -3,7 +3,14 @@
   "$id": "https://repobutler.dev/schemas/repro-run.v1.json",
   "title": "Repro Run",
   "type": "object",
-  "required": ["schema_version", "run_id", "iteration", "sandbox", "steps", "duration_ms"],
+  "required": [
+    "schema_version",
+    "run_id",
+    "iteration",
+    "sandbox",
+    "steps",
+    "duration_ms"
+  ],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
@@ -73,7 +80,13 @@
       "additionalProperties": false,
       "properties": {
         "kind": {
-          "enum": ["exception", "assertion", "nonzero_exit", "snapshot_diff", "timeout"]
+          "enum": [
+            "exception",
+            "assertion",
+            "nonzero_exit",
+            "snapshot_diff",
+            "timeout"
+          ]
         },
         "match_any": {
           "type": "array",
@@ -84,6 +97,41 @@
         "trace_excerpt_sha256": {
           "type": "string",
           "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "failure_type": {
+      "enum": ["env_setup", "repro_failure"]
+    },
+    "environment_strategy": {
+      "type": "object",
+      "required": ["attempted"],
+      "additionalProperties": false,
+      "properties": {
+        "attempted": {
+          "enum": [
+            "devcontainer",
+            "dockerfile",
+            "synth_dockerfile",
+            "bootstrap"
+          ]
+        },
+        "detected": {
+          "enum": [
+            "devcontainer",
+            "dockerfile",
+            "synth_dockerfile",
+            "bootstrap"
+          ]
+        },
+        "failed_at": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "image_used": {
+          "type": "string"
         }
       }
     },

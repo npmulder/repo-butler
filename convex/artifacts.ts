@@ -1,9 +1,13 @@
 import { v } from "convex/values";
 
 import type { Id } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
-import { requireCurrentUser, requireLoadedRunAccess, requireRunAccess } from "./lib/auth";
+import {
+  requireCurrentUser,
+  requireLoadedRunAccess,
+  requireRunAccess,
+} from "./lib/auth";
 
 const reproContractSchemaVersionValidator = v.literal("rb.repro_contract.v1");
 const reproPlanSchemaVersionValidator = v.literal("rb.repro_plan.v1");
@@ -110,10 +114,19 @@ const baseRevisionValidator = v.object({
   sha: v.string(),
 });
 
+const environmentStrategyNameValidator = v.union(
+  v.literal("devcontainer"),
+  v.literal("dockerfile"),
+  v.literal("synth_dockerfile"),
+  v.literal("bootstrap"),
+);
+
 const environmentStrategyValidator = v.object({
-  preferred: v.string(),
-  fallbacks: v.array(v.string()),
+  preferred: environmentStrategyNameValidator,
+  detected: environmentStrategyNameValidator,
+  fallbacks: v.array(environmentStrategyNameValidator),
   notes: v.optional(v.string()),
+  imageUsed: v.optional(v.string()),
 });
 
 const planCommandValidator = v.object({
@@ -147,6 +160,19 @@ const failureObservedValidator = v.object({
   kind: v.string(),
   matchAny: v.optional(v.array(v.string())),
   traceExcerptSha256: v.optional(v.string()),
+});
+
+const reproRunFailureTypeValidator = v.union(
+  v.literal("env_setup"),
+  v.literal("repro_failure"),
+);
+
+const reproRunEnvironmentStrategyValidator = v.object({
+  attempted: environmentStrategyNameValidator,
+  detected: v.optional(environmentStrategyNameValidator),
+  failedAt: v.optional(v.string()),
+  notes: v.optional(v.string()),
+  imageUsed: v.optional(v.string()),
 });
 
 const verdictValidator = v.union(
@@ -205,6 +231,138 @@ async function findSingleRunIdForLogStorage(
   return runIds.values().next().value ?? null;
 }
 
+async function upsertReproPlanDoc(
+  ctx: MutationCtx,
+  args: {
+    runId: Id<"runs">;
+    schemaVersion: "rb.repro_plan.v1";
+    baseRevision: {
+      ref: string;
+      sha: string;
+    };
+    environmentStrategy: {
+      preferred: "devcontainer" | "dockerfile" | "synth_dockerfile" | "bootstrap";
+      detected: "devcontainer" | "dockerfile" | "synth_dockerfile" | "bootstrap";
+      fallbacks: Array<
+        "devcontainer" | "dockerfile" | "synth_dockerfile" | "bootstrap"
+      >;
+      notes?: string;
+      imageUsed?: string;
+    };
+    commands: Array<{
+      cwd: string;
+      cmd: string;
+    }>;
+    artifact: {
+      type: string;
+      path: string;
+      entrypoint?: string;
+    };
+  },
+) {
+  const existing = await ctx.db
+    .query("reproPlans")
+    .withIndex("by_run", (q) => q.eq("runId", args.runId))
+    .unique();
+  const createdAt = existing?.createdAt ?? Date.now();
+  const doc = {
+    runId: args.runId,
+    schemaVersion: args.schemaVersion,
+    baseRevision: args.baseRevision,
+    environmentStrategy: args.environmentStrategy,
+    commands: args.commands,
+    artifact: args.artifact,
+    createdAt,
+  };
+
+  await ctx.db.patch(args.runId, { status: "reproducing" });
+
+  if (existing) {
+    await ctx.db.replace(existing._id, doc);
+    return existing._id;
+  }
+
+  return await ctx.db.insert("reproPlans", doc);
+}
+
+async function upsertReproRunDoc(
+  ctx: MutationCtx,
+  args: {
+    runId: Id<"runs">;
+    schemaVersion: "rb.repro_run.v1";
+    iteration: bigint;
+    sandbox: {
+      kind: string;
+      imageDigest?: string;
+      network: string;
+      uid?: bigint;
+    };
+    steps: Array<{
+      name: string;
+      cmd: string;
+      exitCode: bigint;
+      stdoutSha256?: string;
+      stderrSha256?: string;
+      durationMs?: bigint;
+    }>;
+    failureObserved?: {
+      kind: string;
+      matchAny?: string[];
+      traceExcerptSha256?: string;
+    };
+    failureType?: "env_setup" | "repro_failure";
+    environmentStrategy?: {
+      attempted: "devcontainer" | "dockerfile" | "synth_dockerfile" | "bootstrap";
+      detected?: "devcontainer" | "dockerfile" | "synth_dockerfile" | "bootstrap";
+      failedAt?: string;
+      notes?: string;
+      imageUsed?: string;
+    };
+    artifactContent?: string;
+    logStorageId?: Id<"_storage">;
+    durationMs: bigint;
+  },
+) {
+  const existing = await ctx.db
+    .query("reproRuns")
+    .withIndex("by_run", (q) =>
+      q.eq("runId", args.runId).eq("iteration", args.iteration),
+    )
+    .unique();
+  const createdAt = existing?.createdAt ?? Date.now();
+  const doc = {
+    runId: args.runId,
+    schemaVersion: args.schemaVersion,
+    iteration: args.iteration,
+    sandbox: args.sandbox,
+    steps: args.steps,
+    ...(args.failureObserved !== undefined
+      ? { failureObserved: args.failureObserved }
+      : {}),
+    ...(args.failureType !== undefined
+      ? { failureType: args.failureType }
+      : {}),
+    ...(args.environmentStrategy !== undefined
+      ? { environmentStrategy: args.environmentStrategy }
+      : {}),
+    ...(args.artifactContent !== undefined
+      ? { artifactContent: args.artifactContent }
+      : {}),
+    ...(args.logStorageId !== undefined
+      ? { logStorageId: args.logStorageId }
+      : {}),
+    durationMs: args.durationMs,
+    createdAt,
+  };
+
+  if (existing) {
+    await ctx.db.replace(existing._id, doc);
+    return existing._id;
+  }
+
+  return await ctx.db.insert("reproRuns", doc);
+}
+
 export const storeTriage = internalMutation({
   args: {
     runId: v.id("runs"),
@@ -260,7 +418,8 @@ export const storeTriage = internalMutation({
         : {}),
       expectedFailureSignal: {
         kind: artifact.repro_hypothesis.expected_failure_signal.kind,
-        ...(artifact.repro_hypothesis.expected_failure_signal.match_any !== undefined
+        ...(artifact.repro_hypothesis.expected_failure_signal.match_any !==
+        undefined
           ? {
               matchAny:
                 artifact.repro_hypothesis.expected_failure_signal.match_any,
@@ -351,30 +510,21 @@ export const storeReproPlan = mutation({
   },
   handler: async (ctx, args) => {
     await requireRunAccess(ctx, args.runId);
+    return await upsertReproPlanDoc(ctx, args);
+  },
+});
 
-    const existing = await ctx.db
-      .query("reproPlans")
-      .withIndex("by_run", (q) => q.eq("runId", args.runId))
-      .unique();
-    const createdAt = existing?.createdAt ?? Date.now();
-    const doc = {
-      runId: args.runId,
-      schemaVersion: args.schemaVersion,
-      baseRevision: args.baseRevision,
-      environmentStrategy: args.environmentStrategy,
-      commands: args.commands,
-      artifact: args.artifact,
-      createdAt,
-    };
-
-    await ctx.db.patch(args.runId, { status: "reproducing" });
-
-    if (existing) {
-      await ctx.db.replace(existing._id, doc);
-      return existing._id;
-    }
-
-    return await ctx.db.insert("reproPlans", doc);
+export const storeReproPlanFromAction = internalMutation({
+  args: {
+    runId: v.id("runs"),
+    schemaVersion: reproPlanSchemaVersionValidator,
+    baseRevision: baseRevisionValidator,
+    environmentStrategy: environmentStrategyValidator,
+    commands: v.array(planCommandValidator),
+    artifact: plannedArtifactValidator,
+  },
+  handler: async (ctx, args) => {
+    return await upsertReproPlanDoc(ctx, args);
   },
 });
 
@@ -386,37 +536,34 @@ export const storeReproRun = mutation({
     sandbox: sandboxValidator,
     steps: v.array(stepResultValidator),
     failureObserved: v.optional(failureObservedValidator),
+    failureType: v.optional(reproRunFailureTypeValidator),
+    environmentStrategy: v.optional(reproRunEnvironmentStrategyValidator),
     artifactContent: v.optional(v.string()),
     logStorageId: v.optional(v.id("_storage")),
     durationMs: v.int64(),
   },
   handler: async (ctx, args) => {
     await requireRunAccess(ctx, args.runId);
+    return await upsertReproRunDoc(ctx, args);
+  },
+});
 
-    const existing = await ctx.db
-      .query("reproRuns")
-      .withIndex("by_run", (q) => q.eq("runId", args.runId).eq("iteration", args.iteration))
-      .unique();
-    const createdAt = existing?.createdAt ?? Date.now();
-    const doc = {
-      runId: args.runId,
-      schemaVersion: args.schemaVersion,
-      iteration: args.iteration,
-      sandbox: args.sandbox,
-      steps: args.steps,
-      ...(args.failureObserved !== undefined ? { failureObserved: args.failureObserved } : {}),
-      ...(args.artifactContent !== undefined ? { artifactContent: args.artifactContent } : {}),
-      ...(args.logStorageId !== undefined ? { logStorageId: args.logStorageId } : {}),
-      durationMs: args.durationMs,
-      createdAt,
-    };
-
-    if (existing) {
-      await ctx.db.replace(existing._id, doc);
-      return existing._id;
-    }
-
-    return await ctx.db.insert("reproRuns", doc);
+export const storeReproRunFromAction = internalMutation({
+  args: {
+    runId: v.id("runs"),
+    schemaVersion: reproRunSchemaVersionValidator,
+    iteration: v.int64(),
+    sandbox: sandboxValidator,
+    steps: v.array(stepResultValidator),
+    failureObserved: v.optional(failureObservedValidator),
+    failureType: v.optional(reproRunFailureTypeValidator),
+    environmentStrategy: v.optional(reproRunEnvironmentStrategyValidator),
+    artifactContent: v.optional(v.string()),
+    logStorageId: v.optional(v.id("_storage")),
+    durationMs: v.int64(),
+  },
+  handler: async (ctx, args) => {
+    return await upsertReproRunDoc(ctx, args);
   },
 });
 
@@ -447,7 +594,9 @@ export const storeVerification = mutation({
       policyChecks: args.policyChecks,
       evidence: args.evidence,
       ...(args.notes !== undefined ? { notes: args.notes } : {}),
-      ...(args.logStorageId !== undefined ? { logStorageId: args.logStorageId } : {}),
+      ...(args.logStorageId !== undefined
+        ? { logStorageId: args.logStorageId }
+        : {}),
       createdAt,
     };
 
@@ -478,30 +627,31 @@ export const getRunBundle = query({
 
     await requireLoadedRunAccess(ctx, user, run);
 
-    const [triage, contract, plan, reproRuns, verification, issue] = await Promise.all([
-      ctx.db
-        .query("triageResults")
-        .withIndex("by_run", (q) => q.eq("runId", args.runId))
-        .unique(),
-      ctx.db
-        .query("reproContracts")
-        .withIndex("by_run", (q) => q.eq("runId", args.runId))
-        .unique(),
-      ctx.db
-        .query("reproPlans")
-        .withIndex("by_run", (q) => q.eq("runId", args.runId))
-        .unique(),
-      ctx.db
-        .query("reproRuns")
-        .withIndex("by_run", (q) => q.eq("runId", args.runId))
-        .order("asc")
-        .collect(),
-      ctx.db
-        .query("verifications")
-        .withIndex("by_run", (q) => q.eq("runId", args.runId))
-        .unique(),
-      ctx.db.get(run.issueId),
-    ]);
+    const [triage, contract, plan, reproRuns, verification, issue] =
+      await Promise.all([
+        ctx.db
+          .query("triageResults")
+          .withIndex("by_run", (q) => q.eq("runId", args.runId))
+          .unique(),
+        ctx.db
+          .query("reproContracts")
+          .withIndex("by_run", (q) => q.eq("runId", args.runId))
+          .unique(),
+        ctx.db
+          .query("reproPlans")
+          .withIndex("by_run", (q) => q.eq("runId", args.runId))
+          .unique(),
+        ctx.db
+          .query("reproRuns")
+          .withIndex("by_run", (q) => q.eq("runId", args.runId))
+          .order("asc")
+          .collect(),
+        ctx.db
+          .query("verifications")
+          .withIndex("by_run", (q) => q.eq("runId", args.runId))
+          .unique(),
+        ctx.db.get(run.issueId),
+      ]);
 
     return {
       run,

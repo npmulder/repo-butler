@@ -3,7 +3,14 @@
   "$id": "https://repobutler.dev/schemas/repro-plan.v1.json",
   "title": "Repro Plan",
   "type": "object",
-  "required": ["schema_version", "run_id", "base_revision", "environment_strategy", "commands", "artifact"],
+  "required": [
+    "schema_version",
+    "run_id",
+    "base_revision",
+    "environment_strategy",
+    "commands",
+    "artifact"
+  ],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
@@ -29,19 +36,40 @@
     },
     "environment_strategy": {
       "type": "object",
-      "required": ["preferred", "fallbacks"],
+      "required": ["preferred", "detected", "fallbacks"],
       "additionalProperties": false,
       "properties": {
         "preferred": {
-          "enum": ["devcontainer", "dockerfile", "repo2run_synth", "manual_bootstrap"]
+          "enum": [
+            "devcontainer",
+            "dockerfile",
+            "synth_dockerfile",
+            "bootstrap"
+          ]
+        },
+        "detected": {
+          "enum": [
+            "devcontainer",
+            "dockerfile",
+            "synth_dockerfile",
+            "bootstrap"
+          ]
         },
         "fallbacks": {
           "type": "array",
           "items": {
-            "enum": ["devcontainer", "dockerfile", "repo2run_synth", "manual_bootstrap"]
+            "enum": [
+              "devcontainer",
+              "dockerfile",
+              "synth_dockerfile",
+              "bootstrap"
+            ]
           }
         },
         "notes": {
+          "type": "string"
+        },
+        "image_used": {
           "type": "string"
         }
       }

@@ -69,6 +69,66 @@ The app runs at `http://localhost:3000`.
 - `WORKOS_API_KEY`: WorkOS API key. Keep this server-side only.
 - `WORKOS_COOKIE_PASSWORD`: 32+ character secret used for encrypted session cookies.
 - `NEXT_PUBLIC_WORKOS_REDIRECT_URI`: AuthKit callback URL. In local development this should match `http://localhost:3000/callback`.
+- `LLM_PROVIDER`: Provider switch for Claude requests. Use `anthropic` (default)
+  for direct Anthropic calls or `openrouter` to proxy those calls through
+  OpenRouter.
+- `ANTHROPIC_API_KEY`: Required when `LLM_PROVIDER=anthropic`.
+- `OPENROUTER_API_KEY`: Required when `LLM_PROVIDER=openrouter`.
+- `OPENROUTER_PROVIDER_ORDER`: Optional comma-separated provider preference list
+  for OpenRouter fallback routing.
+- `OPENROUTER_ROUTE`: Optional OpenRouter routing mode. Use `fallback`
+  (default) to preserve the configured provider order or `cheapest` to let
+  OpenRouter optimize for price.
+
+## LLM Provider Configuration
+
+Repo Butler uses the Anthropic SDK for Claude requests. `LLM_PROVIDER`
+controls whether those requests go straight to Anthropic or through
+OpenRouter's Anthropic-compatible endpoint.
+
+| Option | Why you might choose it | Trade-offs |
+| --- | --- | --- |
+| `anthropic` | Lowest-latency path with the fewest moving parts. | Simplest setup and direct Anthropic billing, but no OpenRouter fallback layer or unified provider billing. |
+| `openrouter` | One API key/account for routing and fallback across providers. | Adds a proxy hop and OpenRouter billing/platform overhead, but gives you provider failover and a single billing surface. |
+
+### Direct Anthropic setup
+
+1. Create an Anthropic API key in the Anthropic Console.
+2. Set `LLM_PROVIDER=anthropic` in `.env.local`, or leave it unset because
+   `anthropic` is the default.
+3. Set `ANTHROPIC_API_KEY=...`.
+4. Leave `OPENROUTER_*` unset unless you are preparing a later switch.
+
+### OpenRouter setup
+
+1. Create an OpenRouter account.
+2. Add credits if your deployment will call paid models.
+3. Generate an API key by following the [OpenRouter authentication
+   guide](https://openrouter.ai/docs/api/reference/authentication).
+4. Set `LLM_PROVIDER=openrouter`.
+5. Set `OPENROUTER_API_KEY=...`.
+6. Optionally configure routing:
+   - `OPENROUTER_PROVIDER_ORDER="Anthropic,Amazon Bedrock,Google"` keeps
+     Anthropic first and lets OpenRouter fall back to the next providers.
+   - `OPENROUTER_ROUTE=fallback` is the default and preserves the preferred
+     provider order with fallbacks enabled.
+   - `OPENROUTER_ROUTE=cheapest` ignores the manual provider order and lets
+     OpenRouter sort providers by price instead.
+7. Do not set `OPENROUTER_BASE_URL`; Repo Butler already points the Anthropic
+   SDK at `https://openrouter.ai/api` internally.
+
+### Trade-offs and pricing
+
+- Direct Anthropic is the simplest path and avoids the extra proxy hop, so it
+  should have the lowest latency.
+- OpenRouter adds provider fallback and consolidated billing, which is useful
+  if Anthropic has an outage or you want one place to manage credits and usage.
+- OpenRouter says model prices are pass-through, but its pricing page also
+  lists a platform fee for pay-as-you-go accounts. Compare the current
+  [OpenRouter pricing](https://openrouter.ai/pricing) page with
+  [Anthropic pricing](https://claude.com/pricing) before production rollouts.
+- OpenRouter's [quickstart guide](https://openrouter.ai/docs/quickstart)
+  describes the account, key, and request flow if you want more detail.
 
 ## Validation commands
 
