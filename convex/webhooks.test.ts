@@ -7,7 +7,7 @@ import {
   seedRepo,
   seedRepoSettings,
   seedUser,
-} from "./testHelpers";
+} from "@/test-support/convex/testHelpers";
 
 function buildWebhookPayload(overrides: {
   commentBody?: string;

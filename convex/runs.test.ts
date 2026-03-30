@@ -8,7 +8,7 @@ import {
   seedRepo,
   seedRun,
   seedUser,
-} from "./testHelpers";
+} from "@/test-support/convex/testHelpers";
 
 describe("runs.create", () => {
   it("generates a runId and stores a pending run", async () => {
