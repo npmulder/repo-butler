@@ -134,6 +134,7 @@ const validArtifacts = {
       network_used: false,
       secrets_accessed: false,
       writes_outside_workspace: false,
+      ran_as_root: false,
     },
     evidence: {
       failing_cmd: "pnpm test",

@@ -45,7 +45,7 @@
     },
     "policy_checks": {
       "type": "object",
-      "required": ["network_used", "secrets_accessed", "writes_outside_workspace"],
+      "required": ["network_used", "secrets_accessed", "writes_outside_workspace", "ran_as_root"],
       "additionalProperties": false,
       "properties": {
         "network_used": {
@@ -55,6 +55,9 @@
           "type": "boolean"
         },
         "writes_outside_workspace": {
+          "type": "boolean"
+        },
+        "ran_as_root": {
           "type": "boolean"
         }
       }

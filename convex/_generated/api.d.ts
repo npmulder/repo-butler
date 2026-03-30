@@ -10,7 +10,6 @@
 
 import type * as approvalGate from "../approvalGate.js";
 import type * as artifacts from "../artifacts.js";
-import type * as approvalGate from "../approvalGate.js";
 import type * as auth from "../auth.js";
 import type * as dashboard from "../dashboard.js";
 import type * as githubInstallations from "../githubInstallations.js";
@@ -19,11 +18,14 @@ import type * as issues from "../issues.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_githubWebhooks from "../lib/githubWebhooks.js";
 import type * as pipeline from "../pipeline.js";
-import type * as repos from "../repos.js";
 import type * as repoSettings from "../repoSettings.js";
+import type * as repos from "../repos.js";
+import type * as reproPlans from "../reproPlans.js";
+import type * as reproRuns from "../reproRuns.js";
 import type * as runs from "../runs.js";
 import type * as triageResults from "../triageResults.js";
 import type * as users from "../users.js";
+import type * as verifications from "../verifications.js";
 import type * as webhooks from "../webhooks.js";
 
 import type {
@@ -35,7 +37,6 @@ import type {
 declare const fullApi: ApiFromModules<{
   approvalGate: typeof approvalGate;
   artifacts: typeof artifacts;
-  approvalGate: typeof approvalGate;
   auth: typeof auth;
   dashboard: typeof dashboard;
   githubInstallations: typeof githubInstallations;
@@ -44,11 +45,14 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/githubWebhooks": typeof lib_githubWebhooks;
   pipeline: typeof pipeline;
-  repos: typeof repos;
   repoSettings: typeof repoSettings;
+  repos: typeof repos;
+  reproPlans: typeof reproPlans;
+  reproRuns: typeof reproRuns;
   runs: typeof runs;
   triageResults: typeof triageResults;
   users: typeof users;
+  verifications: typeof verifications;
   webhooks: typeof webhooks;
 }>;
 

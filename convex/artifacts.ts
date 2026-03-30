@@ -194,6 +194,7 @@ const policyChecksValidator = v.object({
   networkUsed: v.boolean(),
   secretsAccessed: v.boolean(),
   writesOutsideWorkspace: v.boolean(),
+  ranAsRoot: v.boolean(),
 });
 
 const evidenceValidator = v.object({
@@ -285,6 +286,62 @@ async function upsertReproPlanDoc(
   return await ctx.db.insert("reproPlans", doc);
 }
 
+async function upsertReproContractDoc(
+  ctx: MutationCtx,
+  args: {
+    runId: Id<"runs">;
+    schemaVersion: "rb.repro_contract.v1";
+    acceptance: {
+      artifactType: "test" | "script";
+      mustFailOnBaseRevision: boolean;
+      mustBeDeterministic: {
+        reruns: bigint;
+        allowedFlakeRate: number;
+      };
+      mustNotRequireNetwork: boolean;
+      failureSignal: {
+        kind:
+          | "exception"
+          | "assertion"
+          | "nonzero_exit"
+          | "snapshot_diff"
+          | "timeout";
+        matchAny?: string[];
+      };
+    };
+    sandboxPolicy: {
+      network: "disabled" | "enabled";
+      runAsRoot: boolean;
+      secretsMount: "none" | "readonly";
+    };
+    budgets: {
+      wallClockSeconds: bigint;
+      maxIterations: bigint;
+    };
+  },
+) {
+  const existing = await ctx.db
+    .query("reproContracts")
+    .withIndex("by_run", (q) => q.eq("runId", args.runId))
+    .unique();
+  const createdAt = existing?.createdAt ?? Date.now();
+  const doc = {
+    runId: args.runId,
+    schemaVersion: args.schemaVersion,
+    acceptance: args.acceptance,
+    sandboxPolicy: args.sandboxPolicy,
+    budgets: args.budgets,
+    createdAt,
+  };
+
+  if (existing) {
+    await ctx.db.replace(existing._id, doc);
+    return existing._id;
+  }
+
+  return await ctx.db.insert("reproContracts", doc);
+}
+
 async function upsertReproRunDoc(
   ctx: MutationCtx,
   args: {
@@ -361,6 +418,71 @@ async function upsertReproRunDoc(
   }
 
   return await ctx.db.insert("reproRuns", doc);
+}
+
+async function upsertVerificationDoc(
+  ctx: MutationCtx,
+  args: {
+    runId: Id<"runs">;
+    schemaVersion: "rb.verification.v1";
+    verdict:
+      | "reproduced"
+      | "not_reproduced"
+      | "flaky"
+      | "policy_violation"
+      | "env_setup_failed"
+      | "budget_exhausted";
+    determinism: {
+      reruns: bigint;
+      fails: bigint;
+      flakeRate: number;
+    };
+    policyChecks: {
+      networkUsed: boolean;
+      secretsAccessed: boolean;
+      writesOutsideWorkspace: boolean;
+      ranAsRoot: boolean;
+    };
+    evidence: {
+      failingCmd: string;
+      exitCode: bigint;
+      stderrSha256?: string;
+    };
+    notes?: string;
+    logStorageId?: Id<"_storage">;
+  },
+) {
+  const existing = await ctx.db
+    .query("verifications")
+    .withIndex("by_run", (q) => q.eq("runId", args.runId))
+    .unique();
+  const createdAt = existing?.createdAt ?? Date.now();
+  const doc = {
+    runId: args.runId,
+    schemaVersion: args.schemaVersion,
+    verdict: args.verdict,
+    determinism: args.determinism,
+    policyChecks: args.policyChecks,
+    evidence: args.evidence,
+    ...(args.notes !== undefined ? { notes: args.notes } : {}),
+    ...(args.logStorageId !== undefined
+      ? { logStorageId: args.logStorageId }
+      : {}),
+    createdAt,
+  };
+
+  await ctx.db.patch(args.runId, {
+    status: args.verdict === "reproduced" ? "completed" : "failed",
+    verdict: args.verdict,
+    completedAt: Date.now(),
+  });
+
+  if (existing) {
+    await ctx.db.replace(existing._id, doc);
+    return existing._id;
+  }
+
+  return await ctx.db.insert("verifications", doc);
 }
 
 export const storeTriage = internalMutation({
@@ -475,27 +597,20 @@ export const storeReproContract = mutation({
   },
   handler: async (ctx, args) => {
     await requireRunAccess(ctx, args.runId);
+    return await upsertReproContractDoc(ctx, args);
+  },
+});
 
-    const existing = await ctx.db
-      .query("reproContracts")
-      .withIndex("by_run", (q) => q.eq("runId", args.runId))
-      .unique();
-    const createdAt = existing?.createdAt ?? Date.now();
-    const doc = {
-      runId: args.runId,
-      schemaVersion: args.schemaVersion,
-      acceptance: args.acceptance,
-      sandboxPolicy: args.sandboxPolicy,
-      budgets: args.budgets,
-      createdAt,
-    };
-
-    if (existing) {
-      await ctx.db.replace(existing._id, doc);
-      return existing._id;
-    }
-
-    return await ctx.db.insert("reproContracts", doc);
+export const storeReproContractFromAction = internalMutation({
+  args: {
+    runId: v.id("runs"),
+    schemaVersion: reproContractSchemaVersionValidator,
+    acceptance: acceptanceValidator,
+    sandboxPolicy: sandboxPolicyValidator,
+    budgets: budgetsValidator,
+  },
+  handler: async (ctx, args) => {
+    return await upsertReproContractDoc(ctx, args);
   },
 });
 
@@ -580,38 +695,23 @@ export const storeVerification = mutation({
   },
   handler: async (ctx, args) => {
     await requireRunAccess(ctx, args.runId);
+    return await upsertVerificationDoc(ctx, args);
+  },
+});
 
-    const existing = await ctx.db
-      .query("verifications")
-      .withIndex("by_run", (q) => q.eq("runId", args.runId))
-      .unique();
-    const createdAt = existing?.createdAt ?? Date.now();
-    const doc = {
-      runId: args.runId,
-      schemaVersion: args.schemaVersion,
-      verdict: args.verdict,
-      determinism: args.determinism,
-      policyChecks: args.policyChecks,
-      evidence: args.evidence,
-      ...(args.notes !== undefined ? { notes: args.notes } : {}),
-      ...(args.logStorageId !== undefined
-        ? { logStorageId: args.logStorageId }
-        : {}),
-      createdAt,
-    };
-
-    await ctx.db.patch(args.runId, {
-      status: args.verdict === "reproduced" ? "completed" : "failed",
-      verdict: args.verdict,
-      completedAt: Date.now(),
-    });
-
-    if (existing) {
-      await ctx.db.replace(existing._id, doc);
-      return existing._id;
-    }
-
-    return await ctx.db.insert("verifications", doc);
+export const storeVerificationFromAction = internalMutation({
+  args: {
+    runId: v.id("runs"),
+    schemaVersion: verificationSchemaVersionValidator,
+    verdict: verdictValidator,
+    determinism: determinismValidator,
+    policyChecks: policyChecksValidator,
+    evidence: evidenceValidator,
+    notes: v.optional(v.string()),
+    logStorageId: v.optional(v.id("_storage")),
+  },
+  handler: async (ctx, args) => {
+    return await upsertVerificationDoc(ctx, args);
   },
 });
 

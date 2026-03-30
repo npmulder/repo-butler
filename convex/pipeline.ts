@@ -55,7 +55,18 @@ import {
   validateReproPlanArtifact,
   validateReproRunArtifact,
 } from "../lib/repro-parser";
+import {
+  generateReproContract,
+  reproContractArtifactToMutationArgs,
+  validateReproContractArtifact,
+} from "../lib/prompts/verifier";
 import { executeSandbox } from "../lib/sandbox-client";
+import {
+  validateVerificationArtifact,
+  verificationArtifactToMutationArgs,
+  verifyReproduction,
+} from "../lib/verification";
+import { normalizeStrategy } from "../worker/env-strategy";
 
 const RETRY_DELAYS_MS = [1000, 3000, 5000] as const;
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
@@ -454,6 +465,29 @@ function buildPlannedSandboxCommands(
   }));
 }
 
+async function storeGeneratedReproContract(
+  ctx: ActionCtx,
+  runId: Id<"runs">,
+  runIdentifier: string,
+  triageArtifact: ReturnType<typeof buildTriageArtifact>,
+) {
+  const contract = generateReproContract(runIdentifier, triageArtifact);
+  const validation = validateReproContractArtifact(contract);
+
+  if (!validation.valid) {
+    throw new Error(
+      `Repro contract failed schema validation: ${validation.errors.join("; ")}`,
+    );
+  }
+
+  await ctx.runMutation(
+    internal.artifacts.storeReproContractFromAction,
+    reproContractArtifactToMutationArgs(runId, contract),
+  );
+
+  return contract;
+}
+
 export const runTriage = internalAction({
   args: {
     runId: v.id("runs"),
@@ -584,6 +618,13 @@ export const runReproduce = internalAction({
       if (!triageResult?.artifact) {
         throw new Error(`No triage artifact stored for run ${args.runId}`);
       }
+
+      await storeGeneratedReproContract(
+        ctx,
+        args.runId,
+        run.runId,
+        triageResult.artifact,
+      );
 
       const baseRevision = await resolveBaseRevision(ctx, repo);
       const languageHint = normalizeLanguageHint(
@@ -734,9 +775,10 @@ export const runReproduce = internalAction({
         ) {
           await ctx.runMutation(internal.runs.updateStatus, {
             runId: args.runId,
-            status: "completed",
-            verdict: "reproduced",
-            errorMessage: `Reproduction succeeded after ${iteration} iteration(s)`,
+            status: "verifying",
+          });
+          await ctx.scheduler.runAfter(0, internal.pipeline.runVerify, {
+            runId: args.runId,
           });
           return null;
         }
@@ -760,6 +802,124 @@ export const runReproduce = internalAction({
         ...(lastSandboxResult?.failureType === "env_setup"
           ? { verdict: "env_setup_failed" as const }
           : {}),
+        errorMessage: formatErrorMessageLegacy(error),
+      });
+    }
+
+    return null;
+  },
+});
+
+export const runVerify = internalAction({
+  args: {
+    runId: v.id("runs"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.runMutation(internal.runs.updateStatus, {
+      runId: args.runId,
+      status: "verifying",
+    });
+
+    try {
+      const { run, repo } = await loadRunContext(ctx, args.runId);
+      const triageResult = await ctx.runQuery(
+        internal.triageResults.getInternalByRunId,
+        { runId: args.runId },
+      );
+      const reproPlan = await ctx.runQuery(
+        internal.reproPlans.getInternalByRunId,
+        { runId: args.runId },
+      );
+      const reproRun = await ctx.runQuery(
+        internal.reproRuns.getInternalByRunId,
+        { runId: args.runId },
+      );
+
+      if (!triageResult?.artifact || !reproPlan || !reproRun?.artifactContent) {
+        throw new Error(
+          `Missing triage, repro plan, or repro run artifact for verification of run ${args.runId}`,
+        );
+      }
+
+      const contract = await storeGeneratedReproContract(
+        ctx,
+        args.runId,
+        run.runId,
+        triageResult.artifact,
+      );
+      const plannedCommands = buildPlannedSandboxCommands(reproPlan.commands);
+      const languageHint = normalizeLanguageHint(
+        triageResult.artifact.repro_hypothesis.environment_assumptions
+          ?.language ?? repo.language,
+      );
+      const runtimeHint = normalizeRuntimeHint(
+        triageResult.artifact.repro_hypothesis.environment_assumptions?.runtime,
+      );
+      const rerunResults = [];
+
+      for (
+        let rerunIndex = 1;
+        rerunIndex <= contract.acceptance.must_be_deterministic.reruns;
+        rerunIndex += 1
+      ) {
+        const rerunResult = await executeSandbox({
+          runId: `${run.runId}_verify_${rerunIndex}`,
+          repo: {
+            cloneUrl: `https://github.com/${repo.owner}/${repo.name}.git`,
+            ref: normalizeCloneRef(reproPlan.baseRevision.ref, repo.defaultBranch),
+            sha: reproPlan.baseRevision.sha,
+          },
+          environment: {
+            strategy:
+              normalizeStrategy(reproPlan.environmentStrategy.preferred) ??
+              "bootstrap",
+            ...(languageHint ? { languageHint } : {}),
+            ...(runtimeHint ? { runtimeHint } : {}),
+          },
+          commands: [
+            {
+              name: "write_artifact",
+              cmd: buildArtifactWriteCommand({
+                file_path: reproPlan.artifact.path,
+                content: reproRun.artifactContent,
+                language: "shell",
+              }),
+            },
+            ...plannedCommands,
+          ],
+          policy: {
+            network: contract.sandbox_policy.network,
+            runAsRoot: false,
+            secretsMount: "none",
+            wallClockTimeout: contract.budgets.wall_clock_seconds,
+            maxIterations: contract.budgets.max_iterations,
+          },
+        });
+
+        rerunResults.push(rerunResult);
+      }
+
+      const verification = verifyReproduction(contract, rerunResults, {
+        file_path: reproPlan.artifact.path,
+        content: reproRun.artifactContent,
+      });
+      const validation = validateVerificationArtifact(verification);
+
+      if (!validation.valid) {
+        throw new Error(
+          `Verification artifact failed schema validation: ${validation.errors.join("; ")}`,
+        );
+      }
+
+      await ctx.runMutation(
+        internal.artifacts.storeVerificationFromAction,
+        verificationArtifactToMutationArgs(args.runId, verification),
+      );
+    } catch (error) {
+      await ctx.runMutation(internal.runs.updateStatus, {
+        runId: args.runId,
+        status: "failed",
         errorMessage: formatErrorMessageLegacy(error),
       });
     }
