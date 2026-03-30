@@ -8,7 +8,7 @@ import {
   seedRepo,
   seedRun,
   seedUser,
-} from "./testHelpers";
+} from "@/test-support/convex/testHelpers";
 
 function buildTriageArtifact(
   runId: string,

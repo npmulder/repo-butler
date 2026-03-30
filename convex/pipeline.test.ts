@@ -96,7 +96,7 @@ import {
   seedRepo,
   seedRun,
   seedUser,
-} from "./testHelpers";
+} from "@/test-support/convex/testHelpers";
 import type { ReproArtifactToolOutput, ReproPlanToolOutput } from "../lib/repro-parser";
 
 function buildClaudeResponse({
