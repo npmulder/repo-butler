@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 export const convexProject = {
   test: {
     name: "convex",
-    include: ["convex/**/*.test.ts"],
+    include: ["__tests__/convex/**/*.test.ts"],
     environment: "edge-runtime",
   },
 };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { api, internal } from "./_generated/api";
+import { api, internal } from "@/convex/_generated/api";
 import {
   createTestConvex,
   seedInstallation,
@@ -8,7 +8,7 @@ import {
   seedRepo,
   seedRun,
   seedUser,
-} from "./testHelpers";
+} from "@/test-support/convex/testHelpers";
 
 describe("runs.create", () => {
   it("generates a runId and stores a pending run", async () => {

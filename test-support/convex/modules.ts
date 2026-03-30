@@ -3,11 +3,9 @@ type ImportMetaWithGlob = ImportMeta & {
 };
 
 export const modules = (import.meta as ImportMetaWithGlob).glob([
-  "./**/*.ts",
-  "./_generated/**/*.js",
-  "!./**/*.test.ts",
-  "!./**/*.config.ts",
-  "!./_generated/ai/**",
-  "!./test.setup.ts",
-  "!./testHelpers.ts",
+  "../../convex/**/*.ts",
+  "../../convex/_generated/**/*.js",
+  "!../../convex/**/*.test.ts",
+  "!../../convex/**/*.config.ts",
+  "!../../convex/_generated/ai/**",
 ]);
