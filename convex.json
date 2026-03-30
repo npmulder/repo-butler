@@ -20,11 +20,11 @@
     "preview": {
       "configure": {
         "redirectUris": [
-          "https://${buildEnv.VERCEL_BRANCH_URL}/api/auth/callback"
+          "${buildEnv.PREVIEW_APP_URL}/api/auth/callback"
         ],
-        "appHomepageUrl": "https://${buildEnv.VERCEL_PROJECT_PRODUCTION_URL}",
+        "appHomepageUrl": "${buildEnv.PREVIEW_APP_URL}",
         "corsOrigins": [
-          "https://${buildEnv.VERCEL_BRANCH_URL}"
+          "${buildEnv.PREVIEW_APP_URL}"
         ]
       }
     },
@@ -32,11 +32,11 @@
       "environmentType": "production",
       "configure": {
         "redirectUris": [
-          "https://${buildEnv.VERCEL_PROJECT_PRODUCTION_URL}/api/auth/callback"
+          "${buildEnv.APP_URL}/api/auth/callback"
         ],
-        "appHomepageUrl": "https://${buildEnv.VERCEL_PROJECT_PRODUCTION_URL}",
+        "appHomepageUrl": "${buildEnv.APP_URL}",
         "corsOrigins": [
-          "https://${buildEnv.VERCEL_PROJECT_PRODUCTION_URL}"
+          "${buildEnv.APP_URL}"
         ]
       }
     }

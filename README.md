@@ -86,7 +86,7 @@ pnpm dev
 - GitHub Actions secret `CONVEX_DEPLOYMENT` should match the shared dev
   deployment for any non-interactive Convex CLI tasks that need deployment
   selection.
-- `.github/workflows/convex-deploy.yml` deploys to Convex when `CONVEX_DEPLOY_KEY` is present.
+- `.github/workflows/convex-deploy.yml` deploys to Convex when `CONVEX_DEPLOY_KEY` is present. Set GitHub Actions environment variable `APP_URL` in the `production` environment so Convex can configure WorkOS redirect and CORS URLs.
 - `.github/workflows/deploy-cloudflare.yml` builds the Next.js app with
   `@opennextjs/cloudflare`, deploys the `preview` Worker environment for
   pull requests to `main`, and deploys production on pushes to `main`.
@@ -98,7 +98,8 @@ pnpm dev
   there (`NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_WORKOS_REDIRECT_URI`,
   `NEXT_PUBLIC_GITHUB_APP_SLUG`, `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, and
   `WORKOS_COOKIE_PASSWORD`) so the Worker build uses real values for each
-  environment.
+  environment. Also define `APP_URL` in `production` and `PREVIEW_APP_URL` in
+  `preview` if Convex AuthKit should track those deployed URLs.
 - Worker deployments run with `wrangler deploy --keep-vars`, so runtime vars and
   secrets that are already managed in Cloudflare are preserved instead of being
   deleted during each GitHub Actions deploy.

@@ -8,10 +8,12 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production
     permissions:
       contents: read
     env:
       CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      APP_URL: ${{ vars.APP_URL }}
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v5
