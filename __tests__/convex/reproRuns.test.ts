@@ -35,6 +35,18 @@ function buildReproRun(
   };
 }
 
+function compareRunIds(left: string, right: string) {
+  if (left < right) {
+    return -1;
+  }
+
+  if (left > right) {
+    return 1;
+  }
+
+  return 0;
+}
+
 describe("reproRuns.listByRepo", () => {
   it("returns the latest repro run for each run in descending run order", async () => {
     const t = createTestConvex();
@@ -176,6 +188,145 @@ describe("reproRuns.listByRepo", () => {
       olderRunId,
     ]);
     expect(results.map((reproRun) => Number(reproRun.iteration))).toEqual([2, 1]);
+  });
+
+  it("falls back when the denormalized latest repro pointer targets another run", async () => {
+    const t = createTestConvex();
+    const owner = await seedUser(t, { workosId: "workos|owner" });
+    const otherOwner = await seedUser(t, { workosId: "workos|other-owner" });
+    const ownerInstallationId = await seedInstallation(t, owner.userId, BigInt(2001));
+    const otherInstallationId = await seedInstallation(
+      t,
+      otherOwner.userId,
+      BigInt(2002),
+    );
+    const { repoId } = await seedRepo(t, {
+      userId: owner.userId,
+      installationId: ownerInstallationId,
+      name: "owned-repo",
+    });
+    const { repoId: otherRepoId } = await seedRepo(t, {
+      userId: otherOwner.userId,
+      installationId: otherInstallationId,
+      name: "other-repo",
+    });
+    const issueId = await seedIssue(t, repoId, {
+      githubIssueNumber: BigInt(20),
+    });
+    const otherIssueId = await seedIssue(t, otherRepoId, {
+      githubIssueNumber: BigInt(21),
+    });
+    const runId = await seedRun(t, {
+      userId: owner.userId,
+      repoId,
+      issueId,
+      runId: "owned-run",
+      startedAt: 30_000,
+    });
+    const otherRunId = await seedRun(t, {
+      userId: otherOwner.userId,
+      repoId: otherRepoId,
+      issueId: otherIssueId,
+      runId: "other-run",
+      startedAt: 31_000,
+    });
+
+    const validReproRunId = await owner.asUser.mutation(api.artifacts.storeReproRun, {
+      runId,
+      ...buildReproRun({
+        artifactContent: "owned",
+      }),
+    });
+    const foreignReproRunId = await otherOwner.asUser.mutation(
+      api.artifacts.storeReproRun,
+      {
+        runId: otherRunId,
+        ...buildReproRun({
+          artifactContent: "foreign",
+        }),
+      },
+    );
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(runId, {
+        latestReproRunId: foreignReproRunId,
+      });
+    });
+
+    const results = await owner.asUser.query(api.reproRuns.listByRepo, {
+      repoId,
+      limit: 10,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?._id).toBe(validReproRunId);
+    expect(results[0]?.runId).toBe(runId);
+  });
+
+  it("uses a deterministic tie-breaker when indexed and legacy runs share startedAt", async () => {
+    const t = createTestConvex();
+    const { userId, asUser } = await seedUser(t);
+    const installationId = await seedInstallation(t, userId);
+    const { repoId } = await seedRepo(t, { userId, installationId });
+    const indexedIssueId = await seedIssue(t, repoId, {
+      githubIssueNumber: BigInt(30),
+    });
+    const legacyIssueId = await seedIssue(t, repoId, {
+      githubIssueNumber: BigInt(31),
+    });
+    const indexedRunId = await seedRun(t, {
+      userId,
+      repoId,
+      issueId: indexedIssueId,
+      runId: "indexed-tie",
+      startedAt: 40_000,
+    });
+    const legacyRunId = await seedRun(t, {
+      userId,
+      repoId,
+      issueId: legacyIssueId,
+      runId: "legacy-tie",
+      startedAt: 40_000,
+    });
+
+    const indexedReproRunId = await asUser.mutation(api.artifacts.storeReproRun, {
+      runId: indexedRunId,
+      ...buildReproRun({
+        artifactContent: "indexed",
+      }),
+    });
+
+    const legacyReproRunId = await t.run(async (ctx) => {
+      return await ctx.db.insert("reproRuns", {
+        runId: legacyRunId,
+        schemaVersion: "rb.repro_run.v1",
+        iteration: BigInt(1),
+        sandbox: {
+          kind: "docker",
+          network: "disabled",
+        },
+        steps: [],
+        artifactContent: "legacy",
+        durationMs: BigInt(1_000),
+        createdAt: 40_500,
+      });
+    });
+
+    const results = await asUser.query(api.reproRuns.listByRepo, {
+      repoId,
+      limit: 10,
+    });
+    const expectedRunIds = [indexedRunId, legacyRunId].sort(compareRunIds);
+
+    expect(results.map((reproRun) => reproRun.runId)).toEqual(expectedRunIds);
+    expect(
+      new Map(results.map((reproRun) => [reproRun.runId, reproRun._id])),
+    ).toEqual(
+      new Map([
+        [indexedRunId, indexedReproRunId],
+        [legacyRunId, legacyReproRunId],
+      ]),
+    );
   });
 
   it("keeps the repo auth guard intact", async () => {

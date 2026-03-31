@@ -8,6 +8,31 @@ function normalizeLimit(limit: number | undefined): number {
   return Math.min(Math.max(limit ?? 20, 1), 100);
 }
 
+type ReproRunEntry = {
+  reproRun: Doc<"reproRuns">;
+  runId: Doc<"runs">["_id"];
+  startedAt: Doc<"runs">["startedAt"];
+};
+
+function compareReproRunEntries(left: ReproRunEntry, right: ReproRunEntry) {
+  if (right.startedAt !== left.startedAt) {
+    return right.startedAt - left.startedAt;
+  }
+
+  const leftId = String(left.runId);
+  const rightId = String(right.runId);
+
+  if (leftId < rightId) {
+    return -1;
+  }
+
+  if (leftId > rightId) {
+    return 1;
+  }
+
+  return 0;
+}
+
 async function getLatestReproRunForRun(
   ctx: QueryCtx,
   run: Doc<"runs">,
@@ -15,7 +40,7 @@ async function getLatestReproRunForRun(
   if (run.latestReproRunId) {
     const latestReproRun = await ctx.db.get(run.latestReproRunId);
 
-    if (latestReproRun) {
+    if (latestReproRun && latestReproRun.runId === run._id) {
       return latestReproRun;
     }
   }
@@ -33,11 +58,7 @@ async function listLegacyLatestReproRunsByRepo(
   seenRunIds: Set<Doc<"runs">["_id"]>,
   limit: number,
 ) {
-  const results: Array<{
-    reproRun: Doc<"reproRuns">;
-    runId: Doc<"runs">["_id"];
-    startedAt: Doc<"runs">["startedAt"];
-  }> = [];
+  const results: ReproRunEntry[] = [];
 
   for await (const run of ctx.db
     .query("runs")
@@ -127,11 +148,7 @@ export const listByRepo = query({
     ).filter(
       (
         entry,
-      ): entry is {
-        reproRun: Doc<"reproRuns">;
-        runId: Doc<"runs">["_id"];
-        startedAt: Doc<"runs">["startedAt"];
-      } => entry !== null,
+      ): entry is ReproRunEntry => entry !== null,
     );
 
     if (indexedEntries.length >= limit) {
@@ -146,7 +163,7 @@ export const listByRepo = query({
     );
 
     return [...indexedEntries, ...legacyResults]
-      .sort((left, right) => right.startedAt - left.startedAt)
+      .sort(compareReproRunEntries)
       .slice(0, limit)
       .map((entry) => entry.reproRun);
   },
