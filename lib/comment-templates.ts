@@ -11,8 +11,20 @@ function escapeHtml(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
-function escapeInlineCode(value: string): string {
-  return escapeHtml(value).replace(/`/g, "\\`");
+function formatInlineCode(value: string): string {
+  const normalized = value.replace(/\r?\n/g, " ");
+  const backtickRuns = normalized.match(/`+/g) ?? [];
+  const fence = "`".repeat(
+    Math.max(1, ...backtickRuns.map((run) => run.length + 1)),
+  );
+  const needsPadding =
+    normalized.startsWith("`") ||
+    normalized.endsWith("`") ||
+    normalized.startsWith(" ") ||
+    normalized.endsWith(" ");
+  const padding = needsPadding ? " " : "";
+
+  return `${fence}${padding}${normalized}${padding}${fence}`;
 }
 
 function escapeMarkdownText(value: string): string {
@@ -37,7 +49,7 @@ function formatAreas(areas: string[] | undefined): string {
     return "—";
   }
 
-  return areas.map((area) => `\`${escapeInlineCode(area)}\``).join(", ");
+  return areas.map((area) => formatInlineCode(area)).join(", ");
 }
 
 function formatPatterns(patterns: string[] | undefined): string | null {
@@ -45,7 +57,7 @@ function formatPatterns(patterns: string[] | undefined): string | null {
     return null;
   }
 
-  return patterns.map((pattern) => `\`${escapeInlineCode(pattern)}\``).join(", ");
+  return patterns.map((pattern) => formatInlineCode(pattern)).join(", ");
 }
 
 function formatSteps(steps: string[] | undefined): string {
@@ -100,6 +112,15 @@ function truncateArtifactContent(content: string): string {
   return `${content.slice(0, MAX_REPRO_ARTIFACT_CHARS)}\n\n[truncated to fit GitHub comment limits]`;
 }
 
+function buildCodeFence(content: string, language: string): [string, string] {
+  const backtickRuns = content.match(/`+/g) ?? [];
+  const fence = "`".repeat(
+    Math.max(3, ...backtickRuns.map((run) => run.length + 1)),
+  );
+
+  return [`${fence}${language}`, fence];
+}
+
 function buildFooter(dashboardUrl: string): string {
   return `[View full run details](${dashboardUrl})\n\n---\n${FOOTER}`;
 }
@@ -143,8 +164,8 @@ export function formatTriageComment(
     "",
     "| Field | Value |",
     "|---|---|",
-    `| **Type** | ${escapeTableCell(`\`${escapeInlineCode(triage.classification.type)}\``)} |`,
-    `| **Severity** | ${escapeTableCell(`\`${escapeInlineCode(severity)}\``)} |`,
+    `| **Type** | ${escapeTableCell(formatInlineCode(triage.classification.type))} |`,
+    `| **Severity** | ${escapeTableCell(formatInlineCode(severity))} |`,
     `| **Confidence** | ${confidence}% |`,
     `| **Areas** | ${escapeTableCell(formatAreas(triage.classification.area))} |`,
     "",
@@ -153,7 +174,7 @@ export function formatTriageComment(
     "<details>",
     "<summary>Reproduction Hypothesis</summary>",
     "",
-    `**Expected failure signal:** \`${escapeInlineCode(triage.repro_hypothesis.expected_failure_signal.kind)}\``,
+    `**Expected failure signal:** ${formatInlineCode(triage.repro_hypothesis.expected_failure_signal.kind)}`,
     ...(matchPatterns ? [`**Match patterns:** ${matchPatterns}`] : []),
     "",
     "**Suggested steps:**",
@@ -194,7 +215,7 @@ export function formatVerificationComment(
     "",
     "| Field | Value |",
     "|---|---|",
-    `| **Verdict** | ${escapeTableCell(`\`${escapeInlineCode(verification.verdict)}\``)} |`,
+    `| **Verdict** | ${escapeTableCell(formatInlineCode(verification.verdict))} |`,
     `| **Determinism** | ${verification.determinism.fails}/${verification.determinism.reruns} runs failed |`,
     `| **Flake rate** | ${(verification.determinism.flake_rate * 100).toFixed(1)}% |`,
     `| **Network used** | ${verification.policy_checks.network_used ? "Yes ⚠️" : "No ✓"} |`,
@@ -209,19 +230,17 @@ export function formatVerificationComment(
     reproArtifact.content
   ) {
     const language = inferCodeFenceLanguage(reproArtifact.file_path);
-    const content = truncateArtifactContent(reproArtifact.content).replace(
-      /```/g,
-      "``\\`",
-    );
+    const content = truncateArtifactContent(reproArtifact.content);
+    const [openingFence, closingFence] = buildCodeFence(content, language);
 
     sections.push(
       "",
       "<details>",
       `<summary>Reproduction Test — <code>${escapeHtml(reproArtifact.file_path)}</code></summary>`,
       "",
-      `\`\`\`${language}`,
+      openingFence,
       content,
-      "```",
+      closingFence,
       "",
       "</details>",
     );
@@ -232,9 +251,9 @@ export function formatVerificationComment(
     "<details>",
     "<summary>Failure Evidence</summary>",
     "",
-    `- **Command:** \`${escapeInlineCode(verification.evidence.failing_cmd)}\``,
+    `- **Command:** ${formatInlineCode(verification.evidence.failing_cmd)}`,
     `- **Exit code:** ${verification.evidence.exit_code}`,
-    `- **stderr hash:** \`${escapeInlineCode((verification.evidence.stderr_sha256 ?? "Unavailable").slice(0, 16))}${verification.evidence.stderr_sha256 ? "..." : ""}\``,
+    `- **stderr hash:** ${formatInlineCode(`${(verification.evidence.stderr_sha256 ?? "Unavailable").slice(0, 16)}${verification.evidence.stderr_sha256 ? "..." : ""}`)}`,
     "",
     "</details>",
   );

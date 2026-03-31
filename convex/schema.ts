@@ -406,10 +406,16 @@ export default defineSchema({
 
   reports: defineTable({
     runId: v.id("runs"),
-    commentId: v.number(),
+    commentId: v.optional(v.number()),
     labelsApplied: v.array(v.string()),
     reportType: v.union(v.literal("triage"), v.literal("verification")),
+    status: v.union(
+      v.literal("posting"),
+      v.literal("posted"),
+      v.literal("failed"),
+    ),
     createdAt: v.float64(),
+    updatedAt: v.float64(),
   }).index("by_run", ["runId"]),
 
   webhookDeliveries: defineTable({

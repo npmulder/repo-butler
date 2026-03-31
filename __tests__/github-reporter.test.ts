@@ -188,6 +188,42 @@ describe("comment templates", () => {
     expect(comment).toContain("Policy Checks");
     expect(comment).toContain("- **Network used:** Yes");
   });
+
+  it("uses safe inline-code delimiters when values contain backticks", () => {
+    const comment = formatVerificationComment(
+      sampleTriageArtifacts.typescriptVitestBug,
+      buildVerification({
+        evidence: {
+          failing_cmd: 'node -e "console.log(`boom`)"',
+          exit_code: 1,
+          stderr_sha256: "b".repeat(64),
+        },
+      }),
+      undefined,
+      dashboardUrl,
+    );
+
+    expect(comment).toContain(
+      '- **Command:** ``node -e "console.log(`boom`)"``',
+    );
+  });
+
+  it("uses a longer code fence when the reproduction artifact contains triple backticks", () => {
+    const comment = formatVerificationComment(
+      sampleTriageArtifacts.typescriptVitestBug,
+      buildVerification(),
+      {
+        ...reproArtifact,
+        content: ['const template = "```";', "throw new Error(template);"].join(
+          "\n",
+        ),
+      },
+      dashboardUrl,
+    );
+
+    expect(comment).toContain("````typescript");
+    expect(comment).toContain('const template = "```";');
+  });
 });
 
 describe("GitHub reporter", () => {
@@ -263,6 +299,7 @@ describe("GitHub reporter", () => {
       commentId: 12345,
       labelsApplied: [STATUS_LABELS.reproVerified],
     });
+    expect(githubState.getInstallationOctokit).toHaveBeenCalledTimes(1);
   });
 
   it("maps failed verification verdicts to the repro failed label", async () => {

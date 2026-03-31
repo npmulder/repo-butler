@@ -20,6 +20,7 @@ import {
   type LlmProvider,
   type TriageInput,
 } from "../lib/claude";
+import { getDashboardBaseUrl } from "../lib/app-url";
 import { getInstallationOctokit } from "../lib/githubApp";
 import {
   TRIAGE_SYSTEM_PROMPT,
@@ -76,7 +77,6 @@ import {
 
 const RETRY_DELAYS_MS = [1000, 3000, 5000] as const;
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
-const DEFAULT_DASHBOARD_URL = "http://localhost:3000";
 
 type RetryDecision = {
   llmProvider: LlmProvider;
@@ -403,40 +403,6 @@ async function loadRunContext(
   }
 
   return { run, issue, repo };
-}
-
-function normalizeAppUrl(candidate: string | undefined): string | null {
-  if (!candidate) {
-    return null;
-  }
-
-  const trimmed = candidate.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  try {
-    const withProtocol = /^https?:\/\//i.test(trimmed)
-      ? trimmed
-      : `https://${trimmed}`;
-
-    return new URL(withProtocol).origin;
-  } catch {
-    return null;
-  }
-}
-
-function getDashboardBaseUrl(): string {
-  return (
-    normalizeAppUrl(process.env.APP_URL) ??
-    normalizeAppUrl(process.env.PREVIEW_APP_URL) ??
-    normalizeAppUrl(process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI) ??
-    normalizeAppUrl(process.env.VERCEL_BRANCH_URL) ??
-    normalizeAppUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL) ??
-    normalizeAppUrl(process.env.VERCEL_URL) ??
-    DEFAULT_DASHBOARD_URL
-  );
 }
 
 function buildDashboardRunUrl(runId: Id<"runs">): string {
@@ -1063,20 +1029,40 @@ export const runReport = internalAction({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const existingReport = await ctx.runQuery(internal.reports.getByRunId, {
-      runId: args.runId,
-    });
-
-    if (existingReport) {
-      return null;
-    }
-
-    await ctx.runMutation(internal.runs.updateStatus, {
-      runId: args.runId,
-      status: "reporting",
-    });
-
     try {
+      const storedVerification = await ctx.runQuery(
+        internal.verifications.getInternalByRunId,
+        { runId: args.runId },
+      );
+      const reportType = storedVerification ? "verification" : "triage";
+      const claim = await ctx.runMutation(internal.reports.claimReport, {
+        runId: args.runId,
+        reportType,
+      });
+
+      if (!claim.shouldPost) {
+        if (claim.status === "posted") {
+          await ctx.runMutation(internal.runs.updateStatus, {
+            runId: args.runId,
+            status:
+              storedVerification &&
+              storedVerification.verdict !== "reproduced"
+                ? "failed"
+                : "completed",
+            ...(storedVerification
+              ? { verdict: storedVerification.verdict }
+              : {}),
+          });
+        }
+
+        return null;
+      }
+
+      await ctx.runMutation(internal.runs.updateStatus, {
+        runId: args.runId,
+        status: "reporting",
+      });
+
       const { run, issue, repo } = await loadRunContext(ctx, args.runId);
       const installation = await ctx.runQuery(
         internal.githubInstallations.getById,
@@ -1084,10 +1070,6 @@ export const runReport = internalAction({
       );
       const triageResult = await ctx.runQuery(
         internal.triageResults.getInternalByRunId,
-        { runId: args.runId },
-      );
-      const storedVerification = await ctx.runQuery(
-        internal.verifications.getInternalByRunId,
         { runId: args.runId },
       );
 
@@ -1131,7 +1113,7 @@ export const runReport = internalAction({
         runId: args.runId,
         commentId: result.commentId,
         labelsApplied: result.labelsApplied,
-        reportType: verification ? "verification" : "triage",
+        reportType,
       });
       await ctx.runMutation(internal.runs.updateStatus, {
         runId: args.runId,
@@ -1143,6 +1125,10 @@ export const runReport = internalAction({
         internal.verifications.getInternalByRunId,
         { runId: args.runId },
       );
+      await ctx.runMutation(internal.reports.markReportFailed, {
+        runId: args.runId,
+        reportType: storedVerification ? "verification" : "triage",
+      });
 
       await ctx.runMutation(internal.runs.updateStatus, {
         runId: args.runId,

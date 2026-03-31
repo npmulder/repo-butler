@@ -980,3 +980,64 @@ describe("pipeline.runVerify", () => {
     });
   });
 });
+
+describe("pipeline.runReport", () => {
+  it("posts a triage report only once across duplicate invocations", async () => {
+    const { t, runId } = await setupPipelineFixture();
+    await seedTriageResult(t, runId);
+    await t.mutation(internal.runs.updateStatus, {
+      runId,
+      status: "reporting",
+    });
+
+    await t.action(internal.pipeline.runReport, { runId });
+    await t.action(internal.pipeline.runReport, { runId });
+
+    const result = await t.run(async (ctx) => {
+      return {
+        run: await ctx.db.get(runId),
+        reports: await ctx.db
+          .query("reports")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .take(10),
+      };
+    });
+
+    expect(githubState.createComment).toHaveBeenCalledTimes(1);
+    expect(result.run).toMatchObject({
+      status: "completed",
+    });
+    expect(result.reports).toHaveLength(1);
+    expect(result.reports[0]).toMatchObject({
+      commentId: 9001,
+      reportType: "triage",
+      status: "posted",
+    });
+  });
+
+  it("finalizes the run from an existing posted report without reposting", async () => {
+    const { t, runId } = await setupPipelineFixture();
+    await seedTriageResult(t, runId);
+    await t.mutation(internal.reports.recordReport, {
+      runId,
+      commentId: 111,
+      labelsApplied: ["type:bug"],
+      reportType: "triage",
+    });
+    await t.mutation(internal.runs.updateStatus, {
+      runId,
+      status: "reporting",
+    });
+
+    await t.action(internal.pipeline.runReport, { runId });
+
+    const run = await t.run(async (ctx) => {
+      return await ctx.db.get(runId);
+    });
+
+    expect(githubState.createComment).not.toHaveBeenCalled();
+    expect(run).toMatchObject({
+      status: "completed",
+    });
+  });
+});

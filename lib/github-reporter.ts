@@ -18,6 +18,8 @@ export interface ReportInput {
   dashboardRunUrl: string;
 }
 
+type InstallationOctokit = Awaited<ReturnType<typeof getInstallationOctokit>>;
+
 const verificationStatusLabels: Record<Verification["verdict"], string> = {
   reproduced: STATUS_LABELS.reproVerified,
   not_reproduced: STATUS_LABELS.reproFailed,
@@ -41,13 +43,11 @@ function isNotFoundError(error: unknown): boolean {
 }
 
 async function removeLabelIfPresent(
+  octokit: InstallationOctokit,
   input: Pick<ReportInput, "owner" | "repo" | "issueNumber"> & {
-    installationId: number;
     name: string;
   },
 ): Promise<void> {
-  const octokit = await getInstallationOctokit(input.installationId);
-
   try {
     await octokit.rest.issues.removeLabel({
       owner: input.owner,
@@ -131,8 +131,7 @@ export async function postVerificationReport(
     STATUS_LABELS.needsRepro,
     STATUS_LABELS.reproRunning,
   ] as const) {
-    await removeLabelIfPresent({
-      installationId: input.installationId,
+    await removeLabelIfPresent(octokit, {
       owner: input.owner,
       repo: input.repo,
       issueNumber: input.issueNumber,
