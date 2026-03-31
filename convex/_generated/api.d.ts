@@ -11,6 +11,7 @@
 import type * as approvalGate from "../approvalGate.js";
 import type * as artifacts from "../artifacts.js";
 import type * as auth from "../auth.js";
+import type * as crons from "../crons.js";
 import type * as dashboard from "../dashboard.js";
 import type * as githubInstallations from "../githubInstallations.js";
 import type * as http from "../http.js";
@@ -41,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   approvalGate: typeof approvalGate;
   artifacts: typeof artifacts;
   auth: typeof auth;
+  crons: typeof crons;
   dashboard: typeof dashboard;
   githubInstallations: typeof githubInstallations;
   http: typeof http;
