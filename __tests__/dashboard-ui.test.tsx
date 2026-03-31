@@ -209,25 +209,33 @@ describe("dashboard UI", () => {
 
     render(<ApprovalActions runId={"run_1" as Doc<"runs">["_id"]} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Approve/i }));
+    const approveButton = screen.getByRole("button", { name: /Approve/i });
+    const requestInfoButton = screen.getByRole("button", {
+      name: /Request info/i,
+    });
+    const rejectButton = screen.getByRole("button", { name: /Reject/i });
+
+    fireEvent.click(approveButton);
     await waitFor(() =>
-      expect(mutate).toHaveBeenCalledWith({
+      expect(mutate).toHaveBeenNthCalledWith(1, {
         action: "approve",
         runId: "run_1",
       }),
     );
+    await waitFor(() => expect(approveButton).not.toBeDisabled());
 
-    fireEvent.click(screen.getByRole("button", { name: /Request info/i }));
+    fireEvent.click(requestInfoButton);
     await waitFor(() =>
-      expect(mutate).toHaveBeenCalledWith({
+      expect(mutate).toHaveBeenNthCalledWith(2, {
         action: "request_info",
         runId: "run_1",
       }),
     );
+    await waitFor(() => expect(requestInfoButton).not.toBeDisabled());
 
-    fireEvent.click(screen.getByRole("button", { name: /Reject/i }));
+    fireEvent.click(rejectButton);
     await waitFor(() =>
-      expect(mutate).toHaveBeenCalledWith({
+      expect(mutate).toHaveBeenNthCalledWith(3, {
         action: "reject",
         runId: "run_1",
       }),
