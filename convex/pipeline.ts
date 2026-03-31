@@ -39,6 +39,7 @@ import {
 import {
   buildTriageArtifact,
   extractTriageFromResponse,
+  type TriageArtifact,
   validateTriageArtifact,
 } from "../lib/triage-parser";
 import {
@@ -62,14 +63,20 @@ import {
 } from "../lib/prompts/verifier";
 import { executeSandbox } from "../lib/sandbox-client";
 import {
+  type Verification,
   validateVerificationArtifact,
   verificationArtifactToMutationArgs,
   verifyReproduction,
 } from "../lib/verification";
 import { normalizeStrategy } from "../worker/env-strategy";
+import {
+  postTriageReport,
+  postVerificationReport,
+} from "../lib/github-reporter";
 
 const RETRY_DELAYS_MS = [1000, 3000, 5000] as const;
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+const DEFAULT_DASHBOARD_URL = "http://localhost:3000";
 
 type RetryDecision = {
   llmProvider: LlmProvider;
@@ -398,6 +405,95 @@ async function loadRunContext(
   return { run, issue, repo };
 }
 
+function normalizeAppUrl(candidate: string | undefined): string | null {
+  if (!candidate) {
+    return null;
+  }
+
+  const trimmed = candidate.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const withProtocol = /^https?:\/\//i.test(trimmed)
+      ? trimmed
+      : `https://${trimmed}`;
+
+    return new URL(withProtocol).origin;
+  } catch {
+    return null;
+  }
+}
+
+function getDashboardBaseUrl(): string {
+  return (
+    normalizeAppUrl(process.env.APP_URL) ??
+    normalizeAppUrl(process.env.PREVIEW_APP_URL) ??
+    normalizeAppUrl(process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI) ??
+    normalizeAppUrl(process.env.VERCEL_BRANCH_URL) ??
+    normalizeAppUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL) ??
+    normalizeAppUrl(process.env.VERCEL_URL) ??
+    DEFAULT_DASHBOARD_URL
+  );
+}
+
+function buildDashboardRunUrl(runId: Id<"runs">): string {
+  return `${getDashboardBaseUrl()}/runs/${runId}`;
+}
+
+function toVerificationArtifact(
+  runId: string,
+  verification: Doc<"verifications">,
+): Verification {
+  return {
+    schema_version: verification.schemaVersion as Verification["schema_version"],
+    run_id: runId,
+    verdict: verification.verdict,
+    determinism: {
+      reruns: Number(verification.determinism.reruns),
+      fails: Number(verification.determinism.fails),
+      flake_rate: verification.determinism.flakeRate,
+    },
+    policy_checks: {
+      network_used: verification.policyChecks.networkUsed,
+      secrets_accessed: verification.policyChecks.secretsAccessed,
+      writes_outside_workspace: verification.policyChecks.writesOutsideWorkspace,
+      ran_as_root: verification.policyChecks.ranAsRoot,
+    },
+    evidence: {
+      failing_cmd: verification.evidence.failingCmd,
+      exit_code: Number(verification.evidence.exitCode),
+      ...(verification.evidence.stderrSha256
+        ? { stderr_sha256: verification.evidence.stderrSha256 }
+        : {}),
+    },
+    ...(verification.notes ? { notes: verification.notes } : {}),
+  };
+}
+
+async function loadReproArtifact(
+  ctx: ActionCtx,
+  runId: Id<"runs">,
+): Promise<{ file_path: string; content: string }> {
+  const [reproPlan, reproRun] = await Promise.all([
+    ctx.runQuery(internal.reproPlans.getInternalByRunId, { runId }),
+    ctx.runQuery(internal.reproRuns.getInternalByRunId, { runId }),
+  ]);
+
+  if (!reproPlan?.artifact.path || !reproRun?.artifactContent) {
+    throw new Error(
+      `Missing repro plan path or reproduction artifact content for run ${runId}`,
+    );
+  }
+
+  return {
+    file_path: reproPlan.artifact.path,
+    content: reproRun.artifactContent,
+  };
+}
+
 async function resolveBaseRevision(
   ctx: ActionCtx,
   repo: Doc<"repos">,
@@ -591,7 +687,10 @@ export const runTriage = internalAction({
       } else {
         await ctx.runMutation(internal.runs.updateStatus, {
           runId: args.runId,
-          status: "completed",
+          status: "reporting",
+        });
+        await ctx.scheduler.runAfter(0, internal.pipeline.runReport, {
+          runId: args.runId,
         });
       }
     } catch (error) {
@@ -938,10 +1037,117 @@ export const runVerify = internalAction({
         internal.artifacts.storeVerificationFromAction,
         verificationArtifactToMutationArgs(args.runId, verification),
       );
+      await ctx.runMutation(internal.runs.updateStatus, {
+        runId: args.runId,
+        status: "reporting",
+        verdict: verification.verdict,
+      });
+      await ctx.scheduler.runAfter(0, internal.pipeline.runReport, {
+        runId: args.runId,
+      });
     } catch (error) {
       await ctx.runMutation(internal.runs.updateStatus, {
         runId: args.runId,
         status: "failed",
+        errorMessage: formatErrorMessageLegacy(error),
+      });
+    }
+
+    return null;
+  },
+});
+
+export const runReport = internalAction({
+  args: {
+    runId: v.id("runs"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const existingReport = await ctx.runQuery(internal.reports.getByRunId, {
+      runId: args.runId,
+    });
+
+    if (existingReport) {
+      return null;
+    }
+
+    await ctx.runMutation(internal.runs.updateStatus, {
+      runId: args.runId,
+      status: "reporting",
+    });
+
+    try {
+      const { run, issue, repo } = await loadRunContext(ctx, args.runId);
+      const installation = await ctx.runQuery(
+        internal.githubInstallations.getById,
+        { installationId: repo.installationId },
+      );
+      const triageResult = await ctx.runQuery(
+        internal.triageResults.getInternalByRunId,
+        { runId: args.runId },
+      );
+      const storedVerification = await ctx.runQuery(
+        internal.verifications.getInternalByRunId,
+        { runId: args.runId },
+      );
+
+      if (!installation) {
+        throw new Error(
+          `GitHub installation ${repo.installationId} not found for repo ${repo.fullName}`,
+        );
+      }
+
+      if (!triageResult?.artifact) {
+        throw new Error(`Missing triage artifact for run ${args.runId}`);
+      }
+
+      const triage = triageResult.artifact as TriageArtifact;
+      const verification = storedVerification
+        ? toVerificationArtifact(run.runId, storedVerification)
+        : undefined;
+      const reproArtifact =
+        verification?.verdict === "reproduced"
+          ? await loadReproArtifact(ctx, args.runId)
+          : undefined;
+      const reportInput = {
+        installationId: Number(installation.installationId),
+        owner: repo.owner,
+        repo: repo.name,
+        issueNumber: Number(issue.githubIssueNumber),
+        triage,
+        ...(verification ? { verification } : {}),
+        ...(reproArtifact ? { reproArtifact } : {}),
+        dashboardRunUrl: buildDashboardRunUrl(args.runId),
+      };
+      const result = verification
+        ? await postVerificationReport(reportInput)
+        : await postTriageReport(reportInput);
+      const finalStatus =
+        verification && verification.verdict !== "reproduced"
+          ? "failed"
+          : "completed";
+
+      await ctx.runMutation(internal.reports.recordReport, {
+        runId: args.runId,
+        commentId: result.commentId,
+        labelsApplied: result.labelsApplied,
+        reportType: verification ? "verification" : "triage",
+      });
+      await ctx.runMutation(internal.runs.updateStatus, {
+        runId: args.runId,
+        status: finalStatus,
+        ...(verification ? { verdict: verification.verdict } : {}),
+      });
+    } catch (error) {
+      const storedVerification = await ctx.runQuery(
+        internal.verifications.getInternalByRunId,
+        { runId: args.runId },
+      );
+
+      await ctx.runMutation(internal.runs.updateStatus, {
+        runId: args.runId,
+        status: "report_failed",
+        ...(storedVerification ? { verdict: storedVerification.verdict } : {}),
         errorMessage: formatErrorMessageLegacy(error),
       });
     }

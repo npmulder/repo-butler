@@ -453,6 +453,9 @@ async function upsertVerificationDoc(
     notes?: string;
     logStorageId?: Id<"_storage">;
   },
+  options: {
+    patchRunStatus: boolean;
+  } = { patchRunStatus: true },
 ) {
   const existing = await ctx.db
     .query("verifications")
@@ -473,11 +476,13 @@ async function upsertVerificationDoc(
     createdAt,
   };
 
-  await ctx.db.patch(args.runId, {
-    status: args.verdict === "reproduced" ? "completed" : "failed",
-    verdict: args.verdict,
-    completedAt: Date.now(),
-  });
+  if (options.patchRunStatus) {
+    await ctx.db.patch(args.runId, {
+      status: args.verdict === "reproduced" ? "completed" : "failed",
+      verdict: args.verdict,
+      completedAt: Date.now(),
+    });
+  }
 
   if (existing) {
     await ctx.db.replace(existing._id, doc);
@@ -697,7 +702,7 @@ export const storeVerification = mutation({
   },
   handler: async (ctx, args) => {
     await requireRunAccess(ctx, args.runId);
-    return await upsertVerificationDoc(ctx, args);
+    return await upsertVerificationDoc(ctx, args, { patchRunStatus: true });
   },
 });
 
@@ -713,7 +718,7 @@ export const storeVerificationFromAction = internalMutation({
     logStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
-    return await upsertVerificationDoc(ctx, args);
+    return await upsertVerificationDoc(ctx, args, { patchRunStatus: false });
   },
 });
 

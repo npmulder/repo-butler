@@ -230,7 +230,9 @@ export default defineSchema({
       v.literal("needs_info"),
       v.literal("reproducing"),
       v.literal("verifying"),
+      v.literal("reporting"),
       v.literal("completed"),
+      v.literal("report_failed"),
       v.literal("failed"),
       v.literal("cancelled"),
     ),
@@ -401,6 +403,14 @@ export default defineSchema({
   })
     .index("by_run", ["runId"])
     .index("by_log_storage_id", ["logStorageId"]),
+
+  reports: defineTable({
+    runId: v.id("runs"),
+    commentId: v.number(),
+    labelsApplied: v.array(v.string()),
+    reportType: v.union(v.literal("triage"), v.literal("verification")),
+    createdAt: v.float64(),
+  }).index("by_run", ["runId"]),
 
   webhookDeliveries: defineTable({
     deliveryId: v.string(),

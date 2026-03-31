@@ -167,7 +167,9 @@ describe("dashboard UI", () => {
       ["rejected", "Rejected"],
       ["reproducing", "Reproducing"],
       ["verifying", "Verifying"],
+      ["reporting", "Reporting"],
       ["completed", "Completed"],
+      ["report_failed", "Report failed"],
       ["failed", "Failed"],
       ["cancelled", "Cancelled"],
     ];

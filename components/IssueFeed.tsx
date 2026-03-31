@@ -20,7 +20,9 @@ const runStatuses = new Set<RunStatus>([
   "needs_info",
   "reproducing",
   "verifying",
+  "reporting",
   "completed",
+  "report_failed",
   "failed",
   "cancelled",
 ]);

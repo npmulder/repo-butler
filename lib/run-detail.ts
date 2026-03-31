@@ -33,6 +33,7 @@ const negativeTerminalStatuses = new Set<Doc<"runs">["status"]>([
   "failed",
   "needs_info",
   "rejected",
+  "report_failed",
 ]);
 
 function formatDuration(milliseconds: number | null) {
@@ -274,7 +275,11 @@ export function buildRunTimelineStages(
           ? "active"
           : reproductionFailed
             ? "failed"
-            : reproRuns.length > 0 || run.status === "completed" || run.status === "verifying"
+            : reproRuns.length > 0 ||
+                run.status === "completed" ||
+                run.status === "verifying" ||
+                run.status === "reporting" ||
+                run.status === "report_failed"
               ? "completed"
               : "pending",
       timestamp:
@@ -329,21 +334,21 @@ export function buildRunTimelineStages(
       key: "report",
       label: "Report",
       status:
-        reportAt !== null
+        run.status === "reporting"
+          ? "active"
+          : reportAt !== null
           ? isNegativeTerminal || verificationFailed
             ? "failed"
             : "completed"
-          : run.status === "verifying"
-            ? "active"
-            : "pending",
+          : "pending",
       timestamp: reportAt,
       durationLabel: null,
       detail:
-        reportAt !== null
+        run.status === "reporting"
+          ? "Posting results back to GitHub."
+          : reportAt !== null
           ? `Run finished as ${formatRunStatus(run.status).toLowerCase()}.`
-          : run.status === "verifying"
-            ? "Preparing the final result."
-            : "Final result has not been recorded yet.",
+          : "Final result has not been recorded yet.",
     },
   ];
 }

@@ -11,6 +11,8 @@ const statusStyles = {
   needs_info: "border-amber-300/20 bg-amber-300/10 text-amber-100",
   pending: "border-white/10 bg-white/5 text-slate-100",
   rejected: "border-rose-400/20 bg-rose-400/10 text-rose-100",
+  report_failed: "border-rose-500/20 bg-rose-500/10 text-rose-100",
+  reporting: "border-indigo-300/20 bg-indigo-300/10 text-indigo-100",
   reproducing: "border-fuchsia-400/20 bg-fuchsia-400/10 text-fuchsia-100",
   triaging: "border-sky-400/20 bg-sky-400/10 text-sky-100",
   verifying: "border-cyan-300/20 bg-cyan-300/10 text-cyan-100",
