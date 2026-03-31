@@ -214,6 +214,8 @@ export default defineSchema({
     userId: v.optional(v.id("users")),
     issueId: v.id("issues"),
     repoId: v.id("repos"),
+    hasReproRun: v.optional(v.boolean()),
+    latestReproRunId: v.optional(v.id("reproRuns")),
     triggeredBy: v.union(
       v.literal("issue_opened"),
       v.literal("label_added"),
@@ -255,6 +257,11 @@ export default defineSchema({
     .index("by_user_and_started_at", ["userId", "startedAt"])
     .index("by_issue", ["issueId", "startedAt"])
     .index("by_repo", ["repoId", "startedAt"])
+    .index("by_repo_and_has_repro_run_and_started_at", [
+      "repoId",
+      "hasReproRun",
+      "startedAt",
+    ])
     .index("by_status", ["status", "startedAt"])
     .index("by_created", ["startedAt"]),
 
