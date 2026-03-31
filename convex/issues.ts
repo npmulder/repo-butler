@@ -1,5 +1,9 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery, query } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  query,
+} from "./_generated/server";
 import { requireRepoAccess } from "./lib/auth";
 
 const issueStateValidator = v.union(v.literal("open"), v.literal("closed"));
@@ -51,7 +55,7 @@ export const snapshot = internalMutation({
         ? { commentsSnapshot: args.commentsSnapshot }
         : {}),
       ...(args.linkedPRs !== undefined ? { linkedPRs: args.linkedPRs } : {}),
-      snapshotedAt: now,
+      snapshottedAt: now,
       createdAt: now,
     });
   },
@@ -64,10 +68,8 @@ export const getByGithubIssue = query({
 
     return await ctx.db
       .query("issues")
-      .withIndex("by_repo_and_github_issue_number_and_snapshoted_at", (q) =>
-        q
-          .eq("repoId", args.repoId)
-          .eq("githubIssueNumber", args.githubIssueNumber),
+      .withIndex("by_repo_and_github_issue_number_and_snapshotted_at", (q) =>
+        q.eq("repoId", args.repoId).eq("githubIssueNumber", args.githubIssueNumber),
       )
       .order("desc")
       .first();
@@ -88,7 +90,9 @@ export const listByRepo = query({
 
     return await ctx.db
       .query("issues")
-      .withIndex("by_repo", (q) => q.eq("repoId", args.repoId))
+      .withIndex("by_repo_and_snapshotted_at", (q) =>
+        q.eq("repoId", args.repoId),
+      )
       .order("desc")
       .take(50);
   },

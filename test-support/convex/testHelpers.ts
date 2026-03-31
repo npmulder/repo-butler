@@ -138,6 +138,7 @@ export async function seedIssue(
   repoId: Id<"repos">,
   options: SeedIssueOptions = {},
 ) {
+  const now = Date.now();
   const githubIssueNumber = options.githubIssueNumber ?? BigInt(42);
   const githubIssueUrl =
     options.githubIssueUrl ??
@@ -154,8 +155,8 @@ export async function seedIssue(
       githubCreatedAt: options.githubCreatedAt ?? "2026-03-29T10:00:00.000Z",
       labels: options.labels ?? [],
       state: options.state ?? "open",
-      snapshotedAt: Date.now(),
-      createdAt: Date.now(),
+      snapshottedAt: now,
+      createdAt: now,
     });
   });
 }

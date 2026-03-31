@@ -234,14 +234,14 @@ export default defineSchema({
       ),
     ),
     linkedPRs: v.optional(v.array(v.string())),
-    snapshotedAt: v.float64(),
+    snapshottedAt: v.float64(),
     createdAt: v.float64(),
   })
-    .index("by_repo", ["repoId", "snapshotedAt"])
-    .index("by_repo_and_github_issue_number_and_snapshoted_at", [
+    .index("by_repo_and_snapshotted_at", ["repoId", "snapshottedAt"])
+    .index("by_repo_and_github_issue_number_and_snapshotted_at", [
       "repoId",
       "githubIssueNumber",
-      "snapshotedAt",
+      "snapshottedAt",
     ])
     .index("by_created", ["createdAt"]),
 

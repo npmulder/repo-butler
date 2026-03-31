@@ -76,7 +76,9 @@ describe("webhooks.processWebhook", () => {
       return {
         issues: await ctx.db
           .query("issues")
-          .withIndex("by_repo", (q) => q.eq("repoId", repoId))
+          .withIndex("by_repo_and_snapshotted_at", (q) =>
+            q.eq("repoId", repoId),
+          )
           .collect(),
         runs: await ctx.db
           .query("runs")
