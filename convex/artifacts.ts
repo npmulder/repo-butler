@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import {
@@ -424,6 +424,7 @@ async function upsertReproRunDoc(
 
 async function upsertVerificationDoc(
   ctx: MutationCtx,
+  run: Doc<"runs">,
   args: {
     runId: Id<"runs">;
     schemaVersion: "rb.verification.v1";
@@ -457,12 +458,6 @@ async function upsertVerificationDoc(
     patchRunStatus: boolean;
   } = { patchRunStatus: true },
 ) {
-  const run = await ctx.db.get(args.runId);
-
-  if (!run) {
-    throw new Error("Run not found");
-  }
-
   const existing = await ctx.db
     .query("verifications")
     .withIndex("by_run", (q) => q.eq("runId", args.runId))
@@ -708,8 +703,10 @@ export const storeVerification = mutation({
     logStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
-    await requireRunAccess(ctx, args.runId);
-    return await upsertVerificationDoc(ctx, args, { patchRunStatus: true });
+    const { run } = await requireRunAccess(ctx, args.runId);
+    return await upsertVerificationDoc(ctx, run, args, {
+      patchRunStatus: true,
+    });
   },
 });
 
@@ -725,7 +722,15 @@ export const storeVerificationFromAction = internalMutation({
     logStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
-    return await upsertVerificationDoc(ctx, args, { patchRunStatus: false });
+    const run = await ctx.db.get(args.runId);
+
+    if (!run) {
+      throw new Error("Run not found");
+    }
+
+    return await upsertVerificationDoc(ctx, run, args, {
+      patchRunStatus: false,
+    });
   },
 });
 

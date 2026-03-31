@@ -181,7 +181,6 @@ describe("verifications.listVerified", () => {
       issueId,
       runId: "run_legacy_reproduced",
       startedAt: 1000,
-      verdict: "reproduced",
     });
     const indexedOlderRunId = await seedRun(t, {
       userId,

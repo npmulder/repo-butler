@@ -35,7 +35,7 @@ async function listLegacyVerifiedByRepo(
       break;
     }
 
-    if (run.verdict !== "reproduced") {
+    if (run.verdict !== undefined && run.verdict !== "reproduced") {
       continue;
     }
 
