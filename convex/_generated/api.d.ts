@@ -9,6 +9,7 @@
  */
 
 import type * as approvalGate from "../approvalGate.js";
+import type * as auditLogs from "../auditLogs.js";
 import type * as artifacts from "../artifacts.js";
 import type * as auth from "../auth.js";
 import type * as dashboard from "../dashboard.js";
@@ -39,6 +40,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   approvalGate: typeof approvalGate;
+  auditLogs: typeof auditLogs;
   artifacts: typeof artifacts;
   auth: typeof auth;
   dashboard: typeof dashboard;

@@ -74,6 +74,17 @@ import {
   postTriageReport,
   postVerificationReport,
 } from "../lib/github-reporter";
+import {
+  AuditEventType,
+  createAuditEvent,
+  toAuditLogMutationArgs,
+} from "../lib/security/audit-logger";
+import {
+  buildRateLimitKey,
+  type RateLimitName,
+} from "../lib/security/rate-limiter";
+import { validateSandboxRequest } from "../lib/security/token-isolation";
+import type { SandboxRequest } from "../worker/types";
 
 const RETRY_DELAYS_MS = [1000, 3000, 5000] as const;
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
@@ -574,6 +585,71 @@ function buildVerificationSandboxPolicy(
   };
 }
 
+function buildRunResource(runId: Id<"runs">) {
+  return { type: "run", id: runId };
+}
+
+async function logRunAuditEvent(
+  ctx: ActionCtx,
+  runId: Id<"runs">,
+  type: AuditEventType,
+  details: Record<string, unknown> = {},
+  actor = "system",
+) {
+  await ctx.runMutation(
+    internal.auditLogs.log,
+    toAuditLogMutationArgs(
+      createAuditEvent(type, actor, buildRunResource(runId), details),
+    ),
+  );
+}
+
+async function enforceRateLimitOrThrow(
+  ctx: ActionCtx,
+  runId: Id<"runs">,
+  name: RateLimitName,
+  scope: string,
+  details: Record<string, unknown> = {},
+) {
+  const key = buildRateLimitKey(name, scope);
+  const result = await ctx.runMutation(internal.auditLogs.enforceRateLimit, {
+    name,
+    key,
+  });
+
+  if (!result.allowed) {
+    await logRunAuditEvent(ctx, runId, AuditEventType.RATE_LIMIT_HIT, {
+      ...details,
+      rateLimit: name,
+      key,
+      resetAt: result.resetAt,
+    });
+    throw new Error(`Rate limit exceeded for ${name}`);
+  }
+
+  return result;
+}
+
+async function executeValidatedSandbox(
+  ctx: ActionCtx,
+  runId: Id<"runs">,
+  request: SandboxRequest,
+  details: Record<string, unknown>,
+) {
+  const validation = validateSandboxRequest(request);
+
+  if (!validation.safe) {
+    await logRunAuditEvent(ctx, runId, AuditEventType.SECRET_DETECTED, {
+      ...details,
+      source: "sandbox_request",
+      violations: validation.violations,
+    });
+    throw new Error("Sandbox request contains sensitive tokens");
+  }
+
+  return await executeSandbox(request);
+}
+
 export const runTriage = internalAction({
   args: {
     runId: v.id("runs"),
@@ -591,6 +667,27 @@ export const runTriage = internalAction({
         ctx,
         args.runId,
         args.issueId,
+      );
+      await logRunAuditEvent(ctx, args.runId, AuditEventType.TRIAGE_STARTED, {
+        issueId: issue._id,
+        repoId: repo._id,
+      });
+      await enforceRateLimitOrThrow(
+        ctx,
+        args.runId,
+        "triagePerRepo",
+        repo._id,
+        {
+          stage: "triage",
+          repoId: repo._id,
+        },
+      );
+      await enforceRateLimitOrThrow(
+        ctx,
+        args.runId,
+        "claudeApiCalls",
+        "global",
+        { stage: "triage" },
       );
       const triageInput = buildTriageInput(repo, issue);
       const response = await requestTriageAssessment(triageInput);
@@ -621,6 +718,11 @@ export const runTriage = internalAction({
           output: response.usage.output_tokens,
         },
       });
+      await logRunAuditEvent(ctx, args.runId, AuditEventType.TRIAGE_COMPLETED, {
+        classificationType: toolOutput.classification.type,
+        confidence: toolOutput.classification.confidence,
+        reproEligible: toolOutput.repro_eligible,
+      });
 
       if (toolOutput.repro_eligible) {
         const approval = await ctx.runQuery(internal.approvalGate.checkApproval, {
@@ -640,6 +742,23 @@ export const runTriage = internalAction({
             approvedAt,
             errorMessage: approval.reason,
           });
+          await logRunAuditEvent(
+            ctx,
+            args.runId,
+            AuditEventType.APPROVAL_GRANTED,
+            {
+              mode: "auto",
+              reason: approval.reason,
+            },
+            "system:auto",
+          );
+          await logRunAuditEvent(
+            ctx,
+            args.runId,
+            AuditEventType.REPRO_DISPATCHED,
+            { source: "auto_approval" },
+            "system:auto",
+          );
           await ctx.scheduler.runAfter(0, internal.pipeline.runReproduce, {
             runId: args.runId,
           });
@@ -649,6 +768,12 @@ export const runTriage = internalAction({
             status: "awaiting_approval",
             errorMessage: approval.reason,
           });
+          await logRunAuditEvent(
+            ctx,
+            args.runId,
+            AuditEventType.APPROVAL_REQUESTED,
+            { reason: approval.reason },
+          );
         }
       } else {
         await ctx.runMutation(internal.runs.updateStatus, {
@@ -697,6 +822,19 @@ export const runReproduce = internalAction({
 
     try {
       const { run, repo } = await loadRunContext(ctx, args.runId);
+      await logRunAuditEvent(ctx, args.runId, AuditEventType.REPRO_DISPATCHED, {
+        source: "pipeline",
+      });
+      await enforceRateLimitOrThrow(
+        ctx,
+        args.runId,
+        "reproPerRepo",
+        repo._id,
+        {
+          stage: "reproduce",
+          repoId: repo._id,
+        },
+      );
       const triageResult = await ctx.runQuery(
         internal.triageResults.getInternalByRunId,
         {
@@ -715,6 +853,16 @@ export const runReproduce = internalAction({
         triageResult.artifact,
       );
 
+      await enforceRateLimitOrThrow(
+        ctx,
+        args.runId,
+        "githubApiCalls",
+        "global",
+        {
+          stage: "reproduce",
+          operation: "repos.getBranch",
+        },
+      );
       const baseRevision = await resolveBaseRevision(ctx, repo);
       const languageHint = normalizeLanguageHint(
         triageResult.artifact.repro_hypothesis.environment_assumptions
@@ -739,6 +887,16 @@ export const runReproduce = internalAction({
         iteration <= MAX_REPRODUCTION_ITERATIONS;
         iteration += 1
       ) {
+        await enforceRateLimitOrThrow(
+          ctx,
+          args.runId,
+          "claudeApiCalls",
+          "global",
+          {
+            stage: "reproduce",
+            iteration,
+          },
+        );
         const response = await requestReproductionAttempt(
           buildReproducerUserPrompt({
             triage: triageResult.artifact,
@@ -801,7 +959,7 @@ export const runReproduce = internalAction({
         }
 
         const plannedCommands = buildPlannedSandboxCommands(planArtifact.commands);
-        const sandboxResult = await executeSandbox({
+        const sandboxRequest: SandboxRequest = {
           runId: run.runId,
           repo: {
             cloneUrl: `https://github.com/${repo.owner}/${repo.name}.git`,
@@ -827,7 +985,16 @@ export const runReproduce = internalAction({
             wallClockTimeout: 1200,
             maxIterations: MAX_REPRODUCTION_ITERATIONS,
           },
-        });
+        };
+        const sandboxResult = await executeValidatedSandbox(
+          ctx,
+          args.runId,
+          sandboxRequest,
+          {
+            stage: "reproduce",
+            iteration,
+          },
+        );
 
         lastSandboxResult = sandboxResult;
 
@@ -862,6 +1029,11 @@ export const runReproduce = internalAction({
             triageResult.artifact.repro_hypothesis.expected_failure_signal,
           )
         ) {
+          await logRunAuditEvent(ctx, args.runId, AuditEventType.REPRO_COMPLETED, {
+            iteration,
+            matchedExpectedFailure: true,
+            failureType: sandboxResult.failureType,
+          });
           await ctx.runMutation(internal.runs.updateStatus, {
             runId: args.runId,
             status: "verifying",
@@ -875,6 +1047,13 @@ export const runReproduce = internalAction({
         previousFeedback = buildReproducerFeedback(sandboxResult);
       }
 
+      await logRunAuditEvent(ctx, args.runId, AuditEventType.REPRO_COMPLETED, {
+        matchedExpectedFailure: false,
+        outcome:
+          lastSandboxResult?.failureType === "env_setup"
+            ? "env_setup_failed"
+            : "budget_exhausted",
+      });
       await ctx.runMutation(internal.runs.updateStatus, {
         runId: args.runId,
         status: "failed",
@@ -885,6 +1064,11 @@ export const runReproduce = internalAction({
         errorMessage: `Failed to reproduce after ${MAX_REPRODUCTION_ITERATIONS} iterations`,
       });
     } catch (error) {
+      await logRunAuditEvent(ctx, args.runId, AuditEventType.REPRO_COMPLETED, {
+        matchedExpectedFailure: false,
+        outcome: "error",
+        message: formatErrorMessageLegacy(error),
+      });
       await ctx.runMutation(internal.runs.updateStatus, {
         runId: args.runId,
         status: "failed",
@@ -956,7 +1140,7 @@ export const runVerify = internalAction({
         rerunIndex <= contract.acceptance.must_be_deterministic.reruns;
         rerunIndex += 1
       ) {
-        const rerunResult = await executeSandbox({
+        const sandboxRequest: SandboxRequest = {
           runId: `${run.runId}_verify_${rerunIndex}`,
           repo: {
             cloneUrl: `https://github.com/${repo.owner}/${repo.name}.git`,
@@ -982,7 +1166,16 @@ export const runVerify = internalAction({
             ...plannedCommands,
           ],
           policy: sandboxPolicy,
-        });
+        };
+        const rerunResult = await executeValidatedSandbox(
+          ctx,
+          args.runId,
+          sandboxRequest,
+          {
+            stage: "verify",
+            rerunIndex,
+          },
+        );
 
         rerunResults.push(rerunResult);
       }
@@ -1003,6 +1196,11 @@ export const runVerify = internalAction({
         internal.artifacts.storeVerificationFromAction,
         verificationArtifactToMutationArgs(args.runId, verification),
       );
+      await logRunAuditEvent(ctx, args.runId, AuditEventType.VERIFY_COMPLETED, {
+        verdict: verification.verdict,
+        reruns: verification.determinism.reruns,
+        flakeRate: verification.determinism.flake_rate,
+      });
       await ctx.runMutation(internal.runs.updateStatus, {
         runId: args.runId,
         status: "reporting",
@@ -1101,6 +1299,18 @@ export const runReport = internalAction({
         ...(reproArtifact ? { reproArtifact } : {}),
         dashboardRunUrl: buildDashboardRunUrl(args.runId),
       };
+      await enforceRateLimitOrThrow(
+        ctx,
+        args.runId,
+        "githubApiCalls",
+        "global",
+        {
+          stage: "report",
+          operation: reportType === "verification"
+            ? "issues.createComment+addLabels"
+            : "issues.createComment+addLabels",
+        },
+      );
       const result = verification
         ? await postVerificationReport(reportInput)
         : await postTriageReport(reportInput);
@@ -1119,6 +1329,11 @@ export const runReport = internalAction({
         runId: args.runId,
         status: finalStatus,
         ...(verification ? { verdict: verification.verdict } : {}),
+      });
+      await logRunAuditEvent(ctx, args.runId, AuditEventType.REPORT_POSTED, {
+        reportType,
+        commentId: result.commentId,
+        labelsApplied: result.labelsApplied,
       });
     } catch (error) {
       const storedVerification = await ctx.runQuery(

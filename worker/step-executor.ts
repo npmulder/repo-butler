@@ -3,6 +3,11 @@ import path from "node:path";
 
 import type Docker from "dockerode";
 
+import { redactSecrets as redactLoggedSecrets } from "../lib/log-redactor";
+import {
+  redactSecrets as redactScannedSecrets,
+  scanForSecrets,
+} from "../lib/security/secret-scanner";
 import { execInContainer } from "./docker-manager";
 import type { SandboxCommand, StepResult } from "./types";
 
@@ -18,6 +23,17 @@ export async function executeStep(
       timeout: step.timeout ?? 300,
     },
   );
+  const source = `step:${step.name}`;
+  const scan = scanForSecrets(`${stdout}\n${stderr}`, source);
+  const sanitizedStdout = redactLoggedSecrets(redactScannedSecrets(stdout));
+  const sanitizedStderr = redactLoggedSecrets(redactScannedSecrets(stderr));
+
+  if (!scan.clean) {
+    console.warn("[security] Secret-like material detected in sandbox output", {
+      source,
+      findings: scan.findings,
+    });
+  }
 
   return {
     timedOut,
@@ -25,11 +41,11 @@ export async function executeStep(
       name: step.name,
       cmd: step.cmd,
       exitCode,
-      stdoutSha256: sha256(stdout),
-      stderrSha256: sha256(stderr),
+      stdoutSha256: sha256(sanitizedStdout),
+      stderrSha256: sha256(sanitizedStderr),
       durationMs,
-      stdoutTail: lastNLines(stdout, 500),
-      stderrTail: lastNLines(stderr, 500),
+      stdoutTail: lastNLines(sanitizedStdout, 500),
+      stderrTail: lastNLines(sanitizedStderr, 500),
     },
   };
 }
