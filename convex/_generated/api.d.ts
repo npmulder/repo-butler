@@ -17,7 +17,6 @@ import type * as http from "../http.js";
 import type * as issues from "../issues.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_githubWebhooks from "../lib/githubWebhooks.js";
-import type * as migrations from "../migrations.js";
 import type * as pipeline from "../pipeline.js";
 import type * as repoSettings from "../repoSettings.js";
 import type * as reports from "../reports.js";
@@ -48,7 +47,6 @@ declare const fullApi: ApiFromModules<{
   issues: typeof issues;
   "lib/auth": typeof lib_auth;
   "lib/githubWebhooks": typeof lib_githubWebhooks;
-  migrations: typeof migrations;
   pipeline: typeof pipeline;
   repoSettings: typeof repoSettings;
   reports: typeof reports;

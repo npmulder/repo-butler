@@ -9,25 +9,25 @@ import {
 } from "@/test-support/convex/testHelpers";
 
 describe("issues queries", () => {
-  it("loads a legacy issue snapshot through the fallback index", async () => {
+  it("loads an issue snapshot through the snapshotted index", async () => {
     const t = createTestConvex();
     const { userId, asUser } = await seedUser(t);
     const installationId = await seedInstallation(t, userId);
     const { repoId } = await seedRepo(t, { userId, installationId });
-    const snapshotedAt = Date.now();
+    const snapshottedAt = Date.now();
 
     await t.run(async (ctx) => {
       await ctx.db.insert("issues", {
         authorLogin: "octocat",
-        createdAt: snapshotedAt,
+        createdAt: snapshottedAt,
         githubCreatedAt: "2026-03-29T10:00:00.000Z",
         githubIssueNumber: BigInt(42),
         githubIssueUrl: "https://github.com/repo-butler/example/issues/42",
         labels: [],
         repoId,
-        snapshotedAt,
+        snapshottedAt,
         state: "open",
-        title: "Legacy snapshot",
+        title: "Issue snapshot",
       });
     });
 
@@ -36,11 +36,11 @@ describe("issues queries", () => {
       repoId,
     });
 
-    expect(issue?.title).toBe("Legacy snapshot");
-    expect(issue?.snapshotedAt).toBe(snapshotedAt);
+    expect(issue?.title).toBe("Issue snapshot");
+    expect(issue?.snapshottedAt).toBe(snapshottedAt);
   });
 
-  it("lists legacy and new snapshots once each, sorted by the effective timestamp", async () => {
+  it("lists snapshots sorted by snapshottedAt", async () => {
     const t = createTestConvex();
     const { userId, asUser } = await seedUser(t);
     const installationId = await seedInstallation(t, userId);
@@ -57,9 +57,9 @@ describe("issues queries", () => {
         githubIssueUrl: "https://github.com/repo-butler/example/issues/1",
         labels: [],
         repoId,
-        snapshotedAt: olderTimestamp,
+        snapshottedAt: olderTimestamp,
         state: "open",
-        title: "Legacy snapshot",
+        title: "Older snapshot",
       });
 
       await ctx.db.insert("issues", {
@@ -70,10 +70,9 @@ describe("issues queries", () => {
         githubIssueUrl: "https://github.com/repo-butler/example/issues/2",
         labels: [],
         repoId,
-        snapshotedAt: newerTimestamp,
         snapshottedAt: newerTimestamp,
         state: "open",
-        title: "New snapshot",
+        title: "Newer snapshot",
       });
     });
 
@@ -81,8 +80,8 @@ describe("issues queries", () => {
 
     expect(issues).toHaveLength(2);
     expect(issues.map((issue) => issue.title)).toEqual([
-      "New snapshot",
-      "Legacy snapshot",
+      "Newer snapshot",
+      "Older snapshot",
     ]);
   });
 });

@@ -198,17 +198,9 @@ export default defineSchema({
       ),
     ),
     linkedPRs: v.optional(v.array(v.string())),
-    // Deprecated typo kept during the snapshottedAt migration window.
-    snapshotedAt: v.optional(v.float64()),
-    snapshottedAt: v.optional(v.float64()),
+    snapshottedAt: v.float64(),
     createdAt: v.float64(),
   })
-    .index("by_repo", ["repoId", "snapshotedAt"])
-    .index("by_repo_and_github_issue_number_and_snapshoted_at", [
-      "repoId",
-      "githubIssueNumber",
-      "snapshotedAt",
-    ])
     .index("by_repo_and_snapshotted_at", ["repoId", "snapshottedAt"])
     .index("by_repo_and_github_issue_number_and_snapshotted_at", [
       "repoId",
