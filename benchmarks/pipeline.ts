@@ -330,20 +330,12 @@ function buildSandboxRequestForRevision(
   };
 }
 
-function didArtifactFail(result: SandboxResult): boolean {
-  const relevantStep = result.steps
-    .filter((step) => step.name !== "write_artifact")
-    .at(-1);
-
-  if (result.status === "timeout") {
-    return true;
-  }
-
-  if (!relevantStep) {
-    return result.status !== "success";
-  }
-
-  return relevantStep.exitCode !== 0;
+function isInconclusiveFailToPassResult(result: SandboxResult): boolean {
+  return (
+    result.failureType === "env_setup" ||
+    result.status === "timeout" ||
+    result.status === "error"
+  );
 }
 
 export async function evaluateFailToPass(
@@ -374,13 +366,25 @@ export async function evaluateFailToPass(
   );
 
   if (
-    baseResult.failureType === "env_setup" ||
-    fixedResult.failureType === "env_setup"
+    isInconclusiveFailToPassResult(baseResult) ||
+    isInconclusiveFailToPassResult(fixedResult)
   ) {
     return null;
   }
 
-  return didArtifactFail(baseResult) && fixedResult.status === "success";
+  if (baseResult.status !== "failure") {
+    return null;
+  }
+
+  if (fixedResult.status === "success") {
+    return true;
+  }
+
+  if (fixedResult.status === "failure") {
+    return false;
+  }
+
+  return null;
 }
 
 export function createLocalBenchmarkPipeline(options?: {

@@ -73,6 +73,28 @@ function readStringArray(
   );
 }
 
+function readOptionalString(
+  value: unknown,
+  context: string,
+): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return readRequiredString(value, context);
+}
+
+function readOptionalStringArray(
+  value: unknown,
+  context: string,
+): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return readStringArray(value, context);
+}
+
 function validateSha(sha: string, context: string): string {
   if (!HEX_SHA_PATTERN.test(sha)) {
     throw new Error(`${context} must be a 40-character git SHA`);
@@ -134,6 +156,35 @@ function parseFixture(
     );
   }
 
+  const fixSha = readOptionalString(
+    rawFixture.repo.fixSha,
+    `fixture[${index}].repo.fixSha`,
+  );
+  const language = readOptionalString(
+    rawFixture.repo.language,
+    `fixture[${index}].repo.language`,
+  );
+  const runtimeHint = readOptionalString(
+    rawFixture.repo.runtimeHint,
+    `fixture[${index}].repo.runtimeHint`,
+  );
+  const author = readOptionalString(
+    rawFixture.issue.author,
+    `fixture[${index}].issue.author`,
+  );
+  const createdAt = readOptionalString(
+    rawFixture.issue.createdAt,
+    `fixture[${index}].issue.createdAt`,
+  );
+  const knownTestPath = readOptionalString(
+    rawFixture.groundTruth.knownTestPath,
+    `fixture[${index}].groundTruth.knownTestPath`,
+  );
+  const knownFailingTests = readOptionalStringArray(
+    rawFixture.groundTruth.knownFailingTests,
+    `fixture[${index}].groundTruth.knownFailingTests`,
+  );
+
   return {
     id: readRequiredString(rawFixture.id, `fixture[${index}].id`),
     source,
@@ -146,31 +197,22 @@ function parseFixture(
         readRequiredString(rawFixture.repo.sha, `fixture[${index}].repo.sha`),
         `fixture[${index}].repo.sha`,
       ),
-      ...(rawFixture.repo.fixSha
+      ...(fixSha !== undefined
         ? {
             fixSha: validateSha(
-              readRequiredString(
-                rawFixture.repo.fixSha,
-                `fixture[${index}].repo.fixSha`,
-              ),
+              fixSha,
               `fixture[${index}].repo.fixSha`,
             ),
           }
         : {}),
-      ...(rawFixture.repo.language
+      ...(language !== undefined
         ? {
-            language: readRequiredString(
-              rawFixture.repo.language,
-              `fixture[${index}].repo.language`,
-            ),
+            language,
           }
         : {}),
-      ...(rawFixture.repo.runtimeHint
+      ...(runtimeHint !== undefined
         ? {
-            runtimeHint: readRequiredString(
-              rawFixture.repo.runtimeHint,
-              `fixture[${index}].repo.runtimeHint`,
-            ),
+            runtimeHint,
           }
         : {}),
     },
@@ -180,20 +222,14 @@ function parseFixture(
       body: readRequiredString(rawFixture.issue.body, `fixture[${index}].issue.body`),
       url: readRequiredString(rawFixture.issue.url, `fixture[${index}].issue.url`),
       labels: readStringArray(rawFixture.issue.labels, `fixture[${index}].issue.labels`),
-      ...(rawFixture.issue.author
+      ...(author !== undefined
         ? {
-            author: readRequiredString(
-              rawFixture.issue.author,
-              `fixture[${index}].issue.author`,
-            ),
+            author,
           }
         : {}),
-      ...(rawFixture.issue.createdAt
+      ...(createdAt !== undefined
         ? {
-            createdAt: readRequiredString(
-              rawFixture.issue.createdAt,
-              `fixture[${index}].issue.createdAt`,
-            ),
+            createdAt,
           }
         : {}),
     },
@@ -218,20 +254,14 @@ function parseFixture(
           `fixture[${index}].groundTruth.failureSignal.matchAny`,
         ),
       },
-      ...(rawFixture.groundTruth.knownTestPath
+      ...(knownTestPath !== undefined
         ? {
-            knownTestPath: readRequiredString(
-              rawFixture.groundTruth.knownTestPath,
-              `fixture[${index}].groundTruth.knownTestPath`,
-            ),
+            knownTestPath,
           }
         : {}),
-      ...(rawFixture.groundTruth.knownFailingTests
+      ...(knownFailingTests !== undefined
         ? {
-            knownFailingTests: readStringArray(
-              rawFixture.groundTruth.knownFailingTests,
-              `fixture[${index}].groundTruth.knownFailingTests`,
-            ),
+            knownFailingTests,
           }
         : {}),
     },

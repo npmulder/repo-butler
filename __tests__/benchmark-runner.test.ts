@@ -1,7 +1,10 @@
 // @vitest-environment node
 
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
+import { parseArgs as parseCheckRegressionArgs } from "../benchmarks/check-regression";
 import { parseFixtureCollection } from "../benchmarks/fixtures";
 import { checkRegression, calculateMetrics } from "../benchmarks/metrics";
 import { evaluateFailToPass } from "../benchmarks/pipeline";
@@ -236,6 +239,57 @@ describe("parseFixtureCollection", () => {
       "fixture[0].repo.sha must be a non-empty string",
     );
   });
+
+  it("rejects empty optional fields instead of silently dropping them", () => {
+    const rawFixture = {
+      ...makeFixture(),
+      repo: {
+        ...makeFixture().repo,
+        fixSha: "",
+      },
+    };
+
+    expect(() => parseFixtureCollection([rawFixture], "swt-bench")).toThrow(
+      "fixture[0].repo.fixSha must be a non-empty string",
+    );
+  });
+});
+
+describe("parseCheckRegressionArgs", () => {
+  it("parses explicit paths and tolerance", () => {
+    const options = parseCheckRegressionArgs([
+      "--baseline",
+      "benchmarks/baseline.json",
+      "--current",
+      "benchmarks/results/metrics.json",
+      "--tolerance",
+      "0.1",
+    ]);
+
+    expect(options).toEqual({
+      baselinePath: path.resolve("benchmarks/baseline.json"),
+      currentPath: path.resolve("benchmarks/results/metrics.json"),
+      tolerance: 0.1,
+    });
+  });
+
+  it("rejects missing path flags and invalid tolerance values", () => {
+    expect(() => parseCheckRegressionArgs(["--baseline"])).toThrow(
+      "--baseline requires a path",
+    );
+    expect(() => parseCheckRegressionArgs(["--current", "--tolerance"])).toThrow(
+      "--current requires a path",
+    );
+    expect(() => parseCheckRegressionArgs(["--tolerance"])).toThrow(
+      "--tolerance requires a numeric argument",
+    );
+    expect(() => parseCheckRegressionArgs(["--tolerance", "nope"])).toThrow(
+      "--tolerance must be a non-negative number",
+    );
+    expect(() => parseCheckRegressionArgs(["--tolerance", "-1"])).toThrow(
+      "--tolerance must be a non-negative number",
+    );
+  });
 });
 
 describe("evaluateFailToPass", () => {
@@ -269,5 +323,44 @@ describe("evaluateFailToPass", () => {
     );
 
     expect(result).toBe(true);
+  });
+
+  it("returns null for infrastructure failures and false when the fix still fails", async () => {
+    const fixture = makeFixture();
+    const reproduction = {
+      succeeded: true,
+      artifact: {
+        file_path: "tests/test_example.py",
+        content: "def test_bug(): assert False",
+        language: "python" as const,
+      },
+      iterations: 1,
+      envSetupFailed: false,
+      planArtifact: makePlanArtifact(),
+      lastSandboxResult: undefined,
+      runArtifact: undefined,
+    };
+
+    const timeoutResult = await evaluateFailToPass(
+      fixture,
+      reproduction,
+      300,
+      async (request) => {
+        if (request.repo.sha === fixture.repo.sha) {
+          return makeSandboxResult(request, "timeout", 124);
+        }
+
+        return makeSandboxResult(request, "success", 0);
+      },
+    );
+    expect(timeoutResult).toBeNull();
+
+    const stillFailingResult = await evaluateFailToPass(
+      fixture,
+      reproduction,
+      300,
+      async (request) => makeSandboxResult(request, "failure", 1),
+    );
+    expect(stillFailingResult).toBe(false);
   });
 });

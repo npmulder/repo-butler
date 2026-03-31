@@ -9,5 +9,5 @@ instances. Each fixture records:
 - the issue text used for triage,
 - and the known failing test path(s) from the benchmark dataset.
 
-The loader in [`benchmarks/fixtures.ts`](/root/code/symphony-workspaces/CV-129/benchmarks/fixtures.ts)
+The loader in [`benchmarks/fixtures.ts`](../fixtures.ts)
 validates these manifests before the runner starts.

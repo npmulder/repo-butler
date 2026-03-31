@@ -12,7 +12,30 @@ function getBenchmarksDir(): string {
   return path.dirname(fileURLToPath(import.meta.url));
 }
 
-function parseArgs(argv: string[]): {
+function readPathFlag(argv: string[], index: number, flag: string): string {
+  const next = argv[index + 1];
+  if (next === undefined || next.startsWith("--")) {
+    throw new Error(`${flag} requires a path`);
+  }
+
+  return path.resolve(next);
+}
+
+function readToleranceFlag(argv: string[], index: number): number {
+  const value = argv[index + 1];
+  if (value === undefined || value.startsWith("--")) {
+    throw new Error("--tolerance requires a numeric argument");
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error("--tolerance must be a non-negative number");
+  }
+
+  return parsed;
+}
+
+export function parseArgs(argv: string[]): {
   baselinePath: string;
   currentPath: string;
   tolerance: number;
@@ -27,19 +50,19 @@ function parseArgs(argv: string[]): {
     const argument = argv[index];
 
     if (argument === "--baseline") {
-      defaults.baselinePath = path.resolve(argv[index + 1]);
+      defaults.baselinePath = readPathFlag(argv, index, argument);
       index += 1;
       continue;
     }
 
     if (argument === "--current") {
-      defaults.currentPath = path.resolve(argv[index + 1]);
+      defaults.currentPath = readPathFlag(argv, index, argument);
       index += 1;
       continue;
     }
 
     if (argument === "--tolerance") {
-      defaults.tolerance = Number(argv[index + 1]);
+      defaults.tolerance = readToleranceFlag(argv, index);
       index += 1;
       continue;
     }
