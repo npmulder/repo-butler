@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import {
@@ -422,8 +422,42 @@ async function upsertReproRunDoc(
   return await ctx.db.insert("reproRuns", doc);
 }
 
+async function syncRunLatestReproRun(
+  ctx: MutationCtx,
+  runId: Id<"runs">,
+) {
+  const latestReproRun = await ctx.db
+    .query("reproRuns")
+    .withIndex("by_run", (q) => q.eq("runId", runId))
+    .order("desc")
+    .first();
+
+  if (!latestReproRun) {
+    return;
+  }
+
+  const run = await ctx.db.get(runId);
+
+  if (!run) {
+    throw new Error("Run not found");
+  }
+
+  if (
+    run.hasReproRun === true &&
+    run.latestReproRunId === latestReproRun._id
+  ) {
+    return;
+  }
+
+  await ctx.db.patch(runId, {
+    hasReproRun: true,
+    latestReproRunId: latestReproRun._id,
+  });
+}
+
 async function upsertVerificationDoc(
   ctx: MutationCtx,
+  run: Doc<"runs">,
   args: {
     runId: Id<"runs">;
     schemaVersion: "rb.verification.v1";
@@ -464,6 +498,7 @@ async function upsertVerificationDoc(
   const createdAt = existing?.createdAt ?? Date.now();
   const doc = {
     runId: args.runId,
+    repoId: run.repoId,
     schemaVersion: args.schemaVersion,
     verdict: args.verdict,
     determinism: args.determinism,
@@ -666,7 +701,9 @@ export const storeReproRun = mutation({
   },
   handler: async (ctx, args) => {
     await requireRunAccess(ctx, args.runId);
-    return await upsertReproRunDoc(ctx, args);
+    const reproRunId = await upsertReproRunDoc(ctx, args);
+    await syncRunLatestReproRun(ctx, args.runId);
+    return reproRunId;
   },
 });
 
@@ -685,7 +722,9 @@ export const storeReproRunFromAction = internalMutation({
     durationMs: v.int64(),
   },
   handler: async (ctx, args) => {
-    return await upsertReproRunDoc(ctx, args);
+    const reproRunId = await upsertReproRunDoc(ctx, args);
+    await syncRunLatestReproRun(ctx, args.runId);
+    return reproRunId;
   },
 });
 
@@ -701,8 +740,10 @@ export const storeVerification = mutation({
     logStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
-    await requireRunAccess(ctx, args.runId);
-    return await upsertVerificationDoc(ctx, args, { patchRunStatus: true });
+    const { run } = await requireRunAccess(ctx, args.runId);
+    return await upsertVerificationDoc(ctx, run, args, {
+      patchRunStatus: true,
+    });
   },
 });
 
@@ -718,7 +759,15 @@ export const storeVerificationFromAction = internalMutation({
     logStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
-    return await upsertVerificationDoc(ctx, args, { patchRunStatus: false });
+    const run = await ctx.db.get(args.runId);
+
+    if (!run) {
+      throw new Error("Run not found");
+    }
+
+    return await upsertVerificationDoc(ctx, run, args, {
+      patchRunStatus: false,
+    });
   },
 });
 

@@ -14,6 +14,8 @@
     "test:unit": "vitest run --config vitest.config.ts --project unit",
     "test:convex": "vitest run --config vitest.config.convex.ts",
     "test:watch": "vitest",
+    "benchmark": "tsx benchmarks/run-benchmark.ts --suite all --output-dir benchmarks/results",
+    "benchmark:check": "tsx benchmarks/check-regression.ts",
     "typecheck": "node scripts/typecheck.mjs",
     "generate:schema-types": "tsx scripts/generate-schema-types.ts",
     "validate:schemas": "tsx scripts/validate-schemas.ts",

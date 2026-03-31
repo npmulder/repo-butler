@@ -1,4 +1,5 @@
 import type { SandboxRequest, SandboxResult } from "../worker/types";
+import { assertSandboxRequestSafe } from "./security/token-isolation";
 
 export async function executeSandbox(
   request: SandboxRequest,
@@ -13,6 +14,8 @@ export async function executeSandbox(
   if (!secret) {
     throw new Error("SANDBOX_WORKER_SECRET is required");
   }
+
+  assertSandboxRequestSafe(request);
 
   const response = await fetch(`${workerUrl}/execute`, {
     method: "POST",

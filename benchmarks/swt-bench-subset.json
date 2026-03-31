@@ -1,0 +1,812 @@
+[
+  {
+    "id": "django__django-13658",
+    "source": "swt-bench",
+    "difficulty": "easy",
+    "repo": {
+      "owner": "django",
+      "name": "django",
+      "ref": "master",
+      "sha": "0773837e15bb632afffb6848a58c59a791008fa1",
+      "fixSha": "cc2269350548307e3fe31723ff4e40a879a7a173",
+      "language": "python"
+    },
+    "issue": {
+      "number": 13658,
+      "title": "Fixed #32177 -- Made execute_from_command_line() use program name from the argv argument.",
+      "body": "ManagementUtility instantiates CommandParser without passing already-computed prog argument\nDescription\n\t\nManagementUtility \u200bgoes to the trouble to parse the program name from the argv it's passed rather than from sys.argv: \n\tdef __init__(self, argv=None):\n\t\tself.argv = argv or sys.argv[:]\n\t\tself.prog_name = os.path.basename(self.argv[0])\n\t\tif self.prog_name == '__main__.py':\n\t\t\tself.prog_name = 'python -m django'\nBut then when it needs to parse --pythonpath and --settings, it \u200buses the program name from sys.argv: \n\t\tparser = CommandParser(usage='%(prog)s subcommand [options] [args]', add_help=False, allow_abbrev=False)\nAbove \"%(prog)s\" \u200brefers to sys.argv[0]. Instead, it should refer to self.prog_name. This can fixed as follows:\n\t\tparser = CommandParser(\n\t\t\tprog=self.prog_name,\n\t\t\tusage='%(prog)s subcommand [options] [args]',\n\t\t\tadd_help=False,\n\t\t\tallow_abbrev=False)\nI'm aware that execute_from_command_line is a private API, but it'd be really convenient for me if it worked properly in my weird embedded environment where sys.argv[0] is \u200bincorrectly None. If passing my own argv to execute_from_command_line avoided all the ensuing exceptions, I wouldn't have to modify sys.argv[0] globally as I'm doing in the meantime.\n",
+      "url": "https://github.com/django/django/pull/13658",
+      "labels": [],
+      "author": "wkschwartz",
+      "createdAt": "2020-11-09T20:50:28Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "medium",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "tests/admin_scripts/tests.py",
+      "knownFailingTests": [
+        "test_program_name_from_argv (admin_scripts.tests.ExecuteFromCommandLine)"
+      ]
+    }
+  },
+  {
+    "id": "pallets__flask-4045",
+    "source": "swt-bench",
+    "difficulty": "easy",
+    "repo": {
+      "owner": "pallets",
+      "name": "flask",
+      "ref": "2.0.x",
+      "sha": "d8c37f43724cd9fb0870f77877b7c4c7e38a19e0",
+      "fixSha": "08e459e823235eecd86c635653f4bd6d6003c2b3",
+      "language": "python"
+    },
+    "issue": {
+      "number": 4045,
+      "title": "blueprint name may not contain a dot",
+      "body": "Raise error when blueprint name contains a dot\nThis is required since every dot is now significant since blueprints can be nested. An error was already added for endpoint names in 1.0, but should have been added for this as well.\n",
+      "url": "https://github.com/pallets/flask/pull/4045",
+      "labels": [
+        "blueprints"
+      ],
+      "author": "davidism",
+      "createdAt": "2021-05-13T21:32:41Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "medium",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "exception",
+        "matchAny": [
+          "ValueError",
+          "dot"
+        ]
+      },
+      "knownTestPath": "tests/test_blueprints.py",
+      "knownFailingTests": [
+        "tests/test_blueprints.py::test_dotted_name_not_allowed",
+        "tests/test_blueprints.py::test_route_decorator_custom_endpoint_with_dots"
+      ]
+    }
+  },
+  {
+    "id": "pytest-dev__pytest-11143",
+    "source": "swt-bench",
+    "difficulty": "easy",
+    "repo": {
+      "owner": "pytest-dev",
+      "name": "pytest",
+      "ref": "main",
+      "sha": "6995257cf470d2143ad1683824962de4071c0eb7",
+      "fixSha": "084d756ae6a03bba7a257ebae3c83095b228988f",
+      "language": "python"
+    },
+    "issue": {
+      "number": 11143,
+      "title": "Ensure the docstring is a string",
+      "body": "Rewrite fails when first expression of file is a number and mistaken as docstring \n<!--\r\nThanks for submitting an issue!\r\n\r\nQuick check-list while reporting bugs:\r\n-->\r\n\r\n- [x] a detailed description of the bug or problem you are having\r\n- [x] output of `pip list` from the virtual environment you are using\r\n- [x] pytest and operating system versions\r\n- [x] minimal example if possible\r\n```\r\nInstalling collected packages: zipp, six, PyYAML, python-dateutil, MarkupSafe, importlib-metadata, watchdog, tomli, soupsieve, pyyaml-env-tag, pycparser, pluggy, packaging, mergedeep, Markdown, jinja2, iniconfig, ghp-import, exceptiongroup, click, websockets, urllib3, tqdm, smmap, pytest, pyee, mkdocs, lxml, importlib-resources, idna, cssselect, charset-normalizer, cffi, certifi, beautifulsoup4, attrs, appdirs, w3lib, typing-extensions, texttable, requests, pyzstd, pytest-metadata, pyquery, pyppmd, pyppeteer, pynacl, pymdown-extensions, pycryptodomex, pybcj, pyasn1, py, psutil, parse, multivolumefile, mkdocs-autorefs, inflate64, gitdb, fake-useragent, cryptography, comtypes, bs4, brotli, bcrypt, allure-python-commons, xlwt, xlrd, rsa, requests-html, pywinauto, python-i18n, python-dotenv, pytest-rerunfailures, pytest-html, pytest-check, PySocks, py7zr, paramiko, mkdocstrings, loguru, GitPython, ftputil, crcmod, chardet, brotlicffi, allure-pytest\r\nSuccessfully installed GitPython-3.1.31 Markdown-3.3.7 MarkupSafe-2.1.3 PySocks-1.7.1 PyYAML-6.0 allure-pytest-2.13.2 allure-python-commons-2.13.2 appdirs-1.4.4 attrs-23.1.0 bcrypt-4.0.1 beautifulsoup4-4.12.2 brotli-1.0.9 brotlicffi-1.0.9.2 bs4-0.0.1 certifi-2023.5.7 cffi-1.15.1 chardet-5.1.0 charset-normalizer-3.1.0 click-8.1.3 comtypes-1.2.0 crcmod-1.7 cryptography-41.0.1 cssselect-1.2.0 exceptiongroup-1.1.1 fake-useragent-1.1.3 ftputil-5.0.4 ghp-import-2.1.0 gitdb-4.0.10 idna-3.4 importlib-metadata-6.7.0 importlib-resources-5.12.0 inflate64-0.3.1 iniconfig-2.0.0 jinja2-3.1.2 loguru-0.7.0 lxml-4.9.2 mergedeep-1.3.4 mkdocs-1.4.3 mkdocs-autorefs-0.4.1 mkdocstrings-0.22.0 multivolumefile-0.2.3 packaging-23.1 paramiko-3.2.0 parse-1.19.1 pluggy-1.2.0 psutil-5.9.5 py-1.11.0 py7zr-0.20.5 pyasn1-0.5.0 pybcj-1.0.1 pycparser-2.21 pycryptodomex-3.18.0 pyee-8.2.2 pymdown-extensions-10.0.1 pynacl-1.5.0 pyppeteer-1.0.2 pyppmd-1.0.0 pyquery-2.0.0 pytest-7.4.0 pytest-check-2.1.5 pytest-html-3.2.0 pytest-metadata-3.0.0 pytest-rerunfailures-11.1.2 python-dateutil-2.8.2 python-dotenv-1.0.0 python-i18n-0.3.9 pywinauto-0.6.6 pyyaml-env-tag-0.1 pyzstd-0.15.9 requests-2.31.0 requests-html-0.10.0 rsa-4.9 six-1.16.0 smmap-5.0.0 soupsieve-2.4.1 texttable-1.6.7 tomli-2.0.1 tqdm-4.65.0 typing-extensions-4.6.3 urllib3-1.26.16 w3lib-2.1.1 watchdog-3.0.0 websockets-10.4 xlrd-2.0.1 xlwt-1.3.0 zipp-3.15.0\r\n```\r\nuse `pytest -k xxx`\uff0c report an error\uff1a`TypeError: argument of type 'int' is not iterable`\r\n\r\nit seems a error in collecting testcase\r\n```\r\n==================================== ERRORS ====================================\r\n_ ERROR collecting testcases/\u57fa\u7ebf/\u4ee3\u7406\u7b56\u7565/SOCKS\u4e8c\u7ea7\u4ee3\u7406\u8fed\u4ee3\u4e8c/\u5728\u7ebf\u7528\u6237/\u5728\u7ebf\u7528\u6237\u66f4\u65b0/\u4e0a\u7ebf\u7528\u6237/test_socks_user_011.py _\r\n/usr/local/lib/python3.8/site-packages/_pytest/runner.py:341: in from_call\r\n    result: Optional[TResult] = func()\r\n/usr/local/lib/python3.8/site-packages/_pytest/runner.py:372: in <lambda>\r\n    call = CallInfo.from_call(lambda: list(collector.collect()), \"collect\")\r\n/usr/local/lib/python3.8/site-packages/_pytest/python.py:531: in collect\r\n    self._inject_setup_module_fixture()\r\n/usr/local/lib/python3.8/site-packages/_pytest/python.py:545: in _inject_setup_module_fixture\r\n    self.obj, (\"setUpModule\", \"setup_module\")\r\n/usr/local/lib/python3.8/site-packages/_pytest/python.py:310: in obj\r\n    self._obj = obj = self._getobj()\r\n/usr/local/lib/python3.8/site-packages/_pytest/python.py:528: in _getobj\r\n    return self._importtestmodule()\r\n/usr/local/lib/python3.8/site-packages/_pytest/python.py:617: in _importtestmodule\r\n    mod = import_path(self.path, mode=importmode, root=self.config.rootpath)\r\n/usr/local/lib/python3.8/site-packages/_pytest/pathlib.py:565: in import_path\r\n    importlib.import_module(module_name)\r\n/usr/local/lib/python3.8/importlib/__init__.py:127: in import_module\r\n    return _bootstrap._gcd_import(name[level:], package, level)\r\n<frozen importlib._bootstrap>:1014: in _gcd_import\r\n    ???\r\n<frozen importlib._bootstrap>:991: in _find_and_load\r\n    ???\r\n<frozen importlib._bootstrap>:975: in _find_and_load_unlocked\r\n    ???\r\n<frozen importlib._bootstrap>:671: in _load_unlocked\r\n    ???\r\n/usr/local/lib/python3.8/site-packages/_pytest/assertion/rewrite.py:169: in exec_module\r\n    source_stat, co = _rewrite_test(fn, self.config)\r\n/usr/local/lib/python3.8/site-packages/_pytest/assertion/rewrite.py:352: in _rewrite_test\r\n    rewrite_asserts(tree, source, strfn, config)\r\n/usr/local/lib/python3.8/site-packages/_pytest/assertion/rewrite.py:413: in rewrite_asserts\r\n    AssertionRewriter(module_path, config, source).run(mod)\r\n/usr/local/lib/python3.8/site-packages/_pytest/assertion/rewrite.py:695: in run\r\n    if self.is_rewrite_disabled(doc):\r\n/usr/local/lib/python3.8/site-packages/_pytest/assertion/rewrite.py:760: in is_rewrite_disabled\r\n    return \"PYTEST_DONT_REWRITE\" in docstring\r\nE   TypeError: argument of type 'int' is not iterable\r\n```\n",
+      "url": "https://github.com/pytest-dev/pytest/pull/11143",
+      "labels": [],
+      "author": "tushar-deepsource",
+      "createdAt": "2023-06-26T06:44:43Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "medium",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "testing/test_assertrewrite.py",
+      "knownFailingTests": [
+        "testing/test_assertrewrite.py::TestIssue11140::test_constant_not_picked_as_module_docstring"
+      ]
+    }
+  },
+  {
+    "id": "pytest-dev__pytest-7220",
+    "source": "swt-bench",
+    "difficulty": "easy",
+    "repo": {
+      "owner": "pytest-dev",
+      "name": "pytest",
+      "ref": "master",
+      "sha": "56bf819c2f4eaf8b36bd8c42c06bb59d5a3bfc0f",
+      "fixSha": "a1465590086b87bc542bd65eeeff439f74a1dd0d",
+      "language": "python"
+    },
+    "issue": {
+      "number": 7220,
+      "title": "Use abspath for errors when cwd changes during testing",
+      "body": "Wrong path to test file when directory changed in fixture\nFiles are shown as relative to new directory when working directory is changed in a fixture. This makes it impossible to jump to the error as the editor is unaware of the directory change. The displayed directory should stay relative to the original directory.\r\n\r\ntest_path_error.py:\r\n```python\r\nimport os\r\nimport errno\r\nimport shutil\r\n\r\nimport pytest\r\n\r\n\r\n@pytest.fixture\r\ndef private_dir():  # or (monkeypatch)\r\n    out_dir = 'ddd'\r\n\r\n    try:\r\n        shutil.rmtree(out_dir)\r\n    except OSError as ex:\r\n        if ex.errno != errno.ENOENT:\r\n            raise\r\n    os.mkdir(out_dir)\r\n\r\n    old_dir = os.getcwd()\r\n    os.chdir(out_dir)\r\n    yield out_dir\r\n    os.chdir(old_dir)\r\n\r\n    # Same issue if using:\r\n    # monkeypatch.chdir(out_dir)\r\n\r\n\r\ndef test_show_wrong_path(private_dir):\r\n    assert False\r\n```\r\n\r\n```diff\r\n+ Expected: test_path_error.py:29: AssertionError\r\n- Displayed: ../test_path_error.py:29: AssertionError\r\n```\r\n\r\nThe full output is:\r\n```\r\n-*- mode: compilation; default-directory: \"~/src/pytest_path_error/\" -*-\r\nCompilation started at Fri Jan 10 00:05:52\r\n\r\nnox\r\nnox > Running session test\r\nnox > Creating virtual environment (virtualenv) using python3.7 in .nox/test\r\nnox > pip install pytest>=5.3\r\nnox > pip freeze\r\nattrs==19.3.0\r\nimportlib-metadata==1.3.0\r\nmore-itertools==8.0.2\r\npackaging==20.0\r\npluggy==0.13.1\r\npy==1.8.1\r\npyparsing==2.4.6\r\npytest==5.3.2\r\nsix==1.13.0\r\nwcwidth==0.1.8\r\nzipp==0.6.0\r\nnox > pytest \r\n================================= test session starts =================================\r\nplatform linux -- Python 3.7.5, pytest-5.3.2, py-1.8.1, pluggy-0.13.1\r\nrootdir: /home/lhn/src/pytest_path_error\r\ncollected 1 item                                                                      \r\n\r\ntest_path_error.py F                                                            [100%]\r\n\r\n====================================== FAILURES =======================================\r\n________________________________ test_show_wrong_path _________________________________\r\n\r\nprivate_dir = 'ddd'\r\n\r\n    def test_show_wrong_path(private_dir):\r\n>       assert False\r\nE       assert False\r\n\r\n../test_path_error.py:29: AssertionError\r\n================================== 1 failed in 0.03s ==================================\r\nnox > Command pytest  failed with exit code 1\r\nnox > Session test failed.\r\n\r\nCompilation exited abnormally with code 1 at Fri Jan 10 00:06:01\r\n```\r\n\r\nnoxfile.py:\r\n```python\r\nimport nox\r\n\r\n@nox.session(python='3.7')\r\ndef test(session):\r\n    session.install('pytest>=5.3')\r\n    session.run('pip', 'freeze')\r\n    session.run('pytest')\r\n```\n",
+      "url": "https://github.com/pytest-dev/pytest/pull/7220",
+      "labels": [],
+      "author": "nicoddemus",
+      "createdAt": "2020-05-16T14:57:17Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "medium",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "testing/test_nodes.py",
+      "knownFailingTests": [
+        "testing/test_nodes.py::test_failure_with_changed_cwd"
+      ]
+    }
+  },
+  {
+    "id": "sphinx-doc__sphinx-7738",
+    "source": "swt-bench",
+    "difficulty": "easy",
+    "repo": {
+      "owner": "sphinx-doc",
+      "name": "sphinx",
+      "ref": "3.x",
+      "sha": "c087d717f6ed183dd422359bf91210dc59689d63",
+      "fixSha": "03559f057422da6b6a1d518cb58584b1e834a5fd",
+      "language": "python"
+    },
+    "issue": {
+      "number": 7738,
+      "title": "Fix #7734: napoleon: overescaped trailing underscore on attribute",
+      "body": "overescaped trailing underscore on attribute with napoleon\n**Describe the bug**\r\nAttribute name `hello_` shows up as `hello\\_` in the html (visible backslash) with napoleon.\r\n\r\n**To Reproduce**\r\nSteps to reproduce the behavior:\r\n\r\nempty `__init__.py`\r\n`a.py` contains\r\n```python\r\nclass A:\r\n    \"\"\"\r\n    Attributes\r\n    ----------\r\n    hello_: int\r\n        hi\r\n    \"\"\"\r\n    pass\r\n```\r\nrun `sphinx-quickstart`\r\nadd `'sphinx.ext.autodoc', 'sphinx.ext.napoleon'` to extensions in conf.py.\r\nadd `.. autoclass:: a.A` to index.rst\r\nPYTHONPATH=. make clean html\r\nopen _build/html/index.html in web browser and see the ugly backslash.\r\n\r\n**Expected behavior**\r\nNo backslash, a similar output to what I get for\r\n```rst\r\n    .. attribute:: hello_\r\n        :type: int\r\n\r\n        hi\r\n```\r\n(the type shows up differently as well, but that's not the point here)\r\nOlder versions like 2.4.3 look ok to me.\r\n\r\n**Environment info**\r\n- OS: Linux debian testing\r\n- Python version: 3.8.3\r\n- Sphinx version: 3.0.4\r\n- Sphinx extensions:  sphinx.ext.autodoc, sphinx.ext.napoleon\r\n- Extra tools:\n",
+      "url": "https://github.com/sphinx-doc/sphinx/pull/7738",
+      "labels": [
+        "type:bug",
+        "extensions:napoleon"
+      ],
+      "author": "tk0miya",
+      "createdAt": "2020-05-27T16:48:09Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "low",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "tests/test_ext_napoleon_docstring.py",
+      "knownFailingTests": [
+        "tests/test_ext_napoleon_docstring.py::NumpyDocstringTest::test_underscore_in_attribute"
+      ]
+    }
+  },
+  {
+    "id": "sympy__sympy-12454",
+    "source": "swt-bench",
+    "difficulty": "easy",
+    "repo": {
+      "owner": "sympy",
+      "name": "sympy",
+      "ref": "master",
+      "sha": "d3fcdb72bfcbb560eb45264ac1c03f359436edef",
+      "fixSha": "739e6411c512c0649847a7a2f6ed74c2413b9876",
+      "language": "python"
+    },
+    "issue": {
+      "number": 12454,
+      "title": "Fix Out of Index Error for is_upper() and is_upper_hessenberg()",
+      "body": "is_upper() raises IndexError for tall matrices\nThe function Matrix.is_upper raises an IndexError for a 4x2 matrix of zeros.\r\n```\r\n>>> sympy.zeros(4,2).is_upper\r\nTraceback (most recent call last):\r\n  File \"<stdin>\", line 1, in <module>\r\n  File \"sympy/matrices/matrices.py\", line 1112, in is_upper\r\n    for i in range(1, self.rows)\r\n  File \"sympy/matrices/matrices.py\", line 1113, in <genexpr>\r\n    for j in range(i))\r\n  File \"sympy/matrices/dense.py\", line 119, in __getitem__\r\n    return self.extract(i, j)\r\n  File \"sympy/matrices/matrices.py\", line 352, in extract\r\n    colsList = [a2idx(k, self.cols) for k in colsList]\r\n  File \"sympy/matrices/matrices.py\", line 5261, in a2idx\r\n    raise IndexError(\"Index out of range: a[%s]\" % (j,))\r\nIndexError: Index out of range: a[2]\r\n```\r\nThe code for is_upper() is\r\n```\r\n        return all(self[i, j].is_zero\r\n                   for i in range(1, self.rows)\r\n                   for j in range(i))\r\n```\r\nFor a 4x2 matrix, is_upper iterates over the indices:\r\n```\r\n>>> A = sympy.zeros(4, 2)\r\n>>> print tuple([i, j] for i in range(1, A.rows) for j in range(i))\r\n([1, 0], [2, 0], [2, 1], [3, 0], [3, 1], [3, 2])\r\n```\r\nThe attempt to index the (3,2) entry appears to be the source of the error. \n",
+      "url": "https://github.com/sympy/sympy/pull/12454",
+      "labels": [],
+      "author": "mohit3011",
+      "createdAt": "2017-03-29T20:40:49Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "medium",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "exception",
+        "matchAny": [
+          "IndexError"
+        ]
+      },
+      "knownTestPath": "sympy/matrices/tests/test_matrices.py",
+      "knownFailingTests": [
+        "test_is_upper",
+        "test_hessenberg"
+      ]
+    }
+  },
+  {
+    "id": "sympy__sympy-13177",
+    "source": "swt-bench",
+    "difficulty": "easy",
+    "repo": {
+      "owner": "sympy",
+      "name": "sympy",
+      "ref": "master",
+      "sha": "662cfb818e865f580e18b59efbb3540c34232beb",
+      "fixSha": "aa04a9a11978d0da328b2aae5b635b7c88309e5d",
+      "language": "python"
+    },
+    "issue": {
+      "number": 13177,
+      "title": "Fixes #13169- Mod(x**2, x) is not (always) 0",
+      "body": "Mod(x**2, x) is not (always) 0\nWhen the base is not an integer, `x**2 % x` is not 0. The base is not tested to be an integer in Mod's eval logic:\r\n\r\n```\r\nif (p == q or p == -q or\r\n        p.is_Pow and p.exp.is_Integer and p.base == q or\r\n        p.is_integer and q == 1):\r\n    return S.Zero\r\n```\r\n\r\nso\r\n\r\n```\r\n>>> Mod(x**2, x)\r\n0\r\n```\r\nbut\r\n```\r\n>>> x = S(1.5)\r\n>>> Mod(x**2, x)\r\n0.75\r\n```\n",
+      "url": "https://github.com/sympy/sympy/pull/13177",
+      "labels": [],
+      "author": "rheaparekh",
+      "createdAt": "2017-08-22T20:28:20Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "medium",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "sympy/core/tests/test_numbers.py",
+      "knownFailingTests": [
+        "test_mod",
+        "test_mod_inverse"
+      ]
+    }
+  },
+  {
+    "id": "psf__requests-2317",
+    "source": "swt-bench",
+    "difficulty": "medium",
+    "repo": {
+      "owner": "psf",
+      "name": "requests",
+      "ref": "master",
+      "sha": "091991be0da19de9108dbe5e3752917fea3d7fdc",
+      "fixSha": "de2494d36f53aaaf32f6b387c1112f2e37325533",
+      "language": "python"
+    },
+    "issue": {
+      "number": 2317,
+      "title": "Use to_native_string instead of builtin_str",
+      "body": "method = builtin_str(method) problem\nIn requests/sessions.py is a command:\n\nmethod = builtin_str(method)\nConverts method from\nb\u2019GET\u2019\nto\n\"b'GET\u2019\"\n\nWhich is the literal string, no longer a binary string.  When requests tries to use the method \"b'GET\u2019\u201d, it gets a 404 Not Found response.\n\nI am using python3.4 and python-neutronclient (2.3.9) with requests (2.4.3).  neutronclient is broken because it uses this \"args = utils.safe_encode_list(args)\" command which converts all the values to binary string, including method.\n\nI'm not sure if this is a bug with neutronclient or a bug with requests, but I'm starting here.  Seems if requests handled the method value being a binary string, we wouldn't have any problem.\n\nAlso, I tried in python2.6 and this bug doesn't exist there. Some difference between 2.6 and 3.4 makes this not work right.\n\n",
+      "url": "https://github.com/psf/requests/pull/2317",
+      "labels": [
+        "Ready To Merge",
+        "Minion Seal of Approval"
+      ],
+      "author": "sigmavirus24",
+      "createdAt": "2014-11-01T02:20:16Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "medium",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "test_requests.py",
+      "knownFailingTests": [
+        "test_requests.py::RequestsTestCase::test_HTTP_302_ALLOW_REDIRECT_GET",
+        "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES",
+        "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES_WITH_DATA",
+        "test_requests.py::RequestsTestCase::test_basicauth_with_netrc",
+        "test_requests.py::RequestsTestCase::test_json_param_post_content_type_works",
+        "test_requests.py::RequestsTestCase::test_manual_redirect_with_partial_body_read",
+        "test_requests.py::RequestsTestCase::test_requests_history_is_saved",
+        "test_requests.py::TestTimeout::test_encoded_methods"
+      ]
+    }
+  },
+  {
+    "id": "psf__requests-2674",
+    "source": "swt-bench",
+    "difficulty": "medium",
+    "repo": {
+      "owner": "psf",
+      "name": "requests",
+      "ref": "master",
+      "sha": "0be38a0c37c59c4b66ce908731da15b401655113",
+      "fixSha": "31eb040d82f4bb0ccb80cdf95b30d06acf52bb15",
+      "language": "python"
+    },
+    "issue": {
+      "number": 2674,
+      "title": "Catch and wrap ClosedPoolError",
+      "body": "urllib3 exceptions passing through requests API\nI don't know if it's a design goal of requests to hide urllib3's exceptions and wrap them around requests.exceptions types.\n\n(If it's not IMHO it should be, but that's another discussion)\n\nIf it is, I have at least two of them passing through that I have to catch in addition to requests' exceptions. They are requests.packages.urllib3.exceptions.DecodeError and requests.packages.urllib3.exceptions.TimeoutError (this one I get when a proxy timeouts)\n\nThanks!\n\n",
+      "url": "https://github.com/psf/requests/pull/2674",
+      "labels": [],
+      "author": "ArcTanSusan",
+      "createdAt": "2015-07-17T08:33:52Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "high",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "exception",
+        "matchAny": [
+          "ClosedPoolError",
+          "ConnectionError"
+        ]
+      },
+      "knownTestPath": "test_requests.py",
+      "knownFailingTests": [
+        "test_requests.py::RequestsTestCase::test_BASICAUTH_TUPLE_HTTP_200_OK_GET",
+        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_ALTERNATIVE",
+        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_PARAMS",
+        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_HEAD",
+        "test_requests.py::RequestsTestCase::test_auth_is_retained_for_redirect_on_host",
+        "test_requests.py::RequestsTestCase::test_different_encodings_dont_break_post",
+        "test_requests.py::RequestsTestCase::test_manual_redirect_with_partial_body_read",
+        "test_requests.py::RequestsTestCase::test_mixed_case_scheme_acceptable",
+        "test_requests.py::RequestsTestCase::test_prepared_from_session",
+        "test_requests.py::RequestsTestCase::test_unicode_multipart_post",
+        "test_requests.py::TestTimeout::test_none_timeout",
+        "test_requests.py::TestTimeout::test_encoded_methods"
+      ]
+    }
+  },
+  {
+    "id": "pytest-dev__pytest-11148",
+    "source": "swt-bench",
+    "difficulty": "medium",
+    "repo": {
+      "owner": "pytest-dev",
+      "name": "pytest",
+      "ref": "main",
+      "sha": "2f7415cfbc4b6ca62f9013f1abd27136f46b9653",
+      "fixSha": "b77d0deaf53697630ba534f62dc871f4eb275f14",
+      "language": "python"
+    },
+    "issue": {
+      "number": 11148,
+      "title": "Fix duplicated imports with importlib mode and doctest-modules",
+      "body": "Module imported twice under import-mode=importlib\nIn pmxbot/pmxbot@7f189ad, I'm attempting to switch pmxbot off of pkg_resources style namespace packaging to PEP 420 namespace packages. To do so, I've needed to switch to `importlib` for the `import-mode` and re-organize the tests to avoid import errors on the tests.\r\n\r\nYet even after working around these issues, the tests are failing when the effect of `core.initialize()` doesn't seem to have had any effect.\r\n\r\nInvestigating deeper, I see that initializer is executed and performs its actions (setting a class variable `pmxbot.logging.Logger.store`), but when that happens, there are two different versions of `pmxbot.logging` present, one in `sys.modules` and another found in `tests.unit.test_commands.logging`:\r\n\r\n```\r\n=========================================================================== test session starts ===========================================================================\r\nplatform darwin -- Python 3.11.1, pytest-7.2.0, pluggy-1.0.0\r\ncachedir: .tox/python/.pytest_cache\r\nrootdir: /Users/jaraco/code/pmxbot/pmxbot, configfile: pytest.ini\r\nplugins: black-0.3.12, mypy-0.10.3, jaraco.test-5.3.0, checkdocs-2.9.0, flake8-1.1.1, enabler-2.0.0, jaraco.mongodb-11.2.1, pmxbot-1122.14.3.dev13+g7f189ad\r\ncollected 421 items / 180 deselected / 241 selected                                                                                                                       \r\nrun-last-failure: rerun previous 240 failures (skipped 14 files)\r\n\r\ntests/unit/test_commands.py E\r\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> traceback >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\r\n\r\ncls = <class 'tests.unit.test_commands.TestCommands'>\r\n\r\n    @classmethod\r\n    def setup_class(cls):\r\n        path = os.path.dirname(os.path.abspath(__file__))\r\n        configfile = os.path.join(path, 'testconf.yaml')\r\n        config = pmxbot.dictlib.ConfigDict.from_yaml(configfile)\r\n        cls.bot = core.initialize(config)\r\n>       logging.Logger.store.message(\"logged\", \"testrunner\", \"some text\")\r\nE       AttributeError: type object 'Logger' has no attribute 'store'\r\n\r\ntests/unit/test_commands.py:37: AttributeError\r\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> entering PDB >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\r\n\r\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> PDB post_mortem (IO-capturing turned off) >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\r\n> /Users/jaraco/code/pmxbot/pmxbot/tests/unit/test_commands.py(37)setup_class()\r\n-> logging.Logger.store.message(\"logged\", \"testrunner\", \"some text\")\r\n(Pdb) logging.Logger\r\n<class 'pmxbot.logging.Logger'>\r\n(Pdb) logging\r\n<module 'pmxbot.logging' from '/Users/jaraco/code/pmxbot/pmxbot/pmxbot/logging.py'>\r\n(Pdb) import sys\r\n(Pdb) sys.modules['pmxbot.logging']\r\n<module 'pmxbot.logging' from '/Users/jaraco/code/pmxbot/pmxbot/pmxbot/logging.py'>\r\n(Pdb) sys.modules['pmxbot.logging'] is logging\r\nFalse\r\n```\r\n\r\nI haven't yet made a minimal reproducer, but I wanted to first capture this condition.\r\n\n",
+      "url": "https://github.com/pytest-dev/pytest/pull/11148",
+      "labels": [],
+      "author": "nicoddemus",
+      "createdAt": "2023-06-29T00:04:33Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "medium",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "testing/test_pathlib.py",
+      "knownFailingTests": [
+        "testing/test_pathlib.py::TestImportPath::test_remembers_previous_imports",
+        "testing/acceptance_test.py::test_doctest_and_normal_imports_with_importlib"
+      ]
+    }
+  },
+  {
+    "id": "pytest-dev__pytest-7490",
+    "source": "swt-bench",
+    "difficulty": "medium",
+    "repo": {
+      "owner": "pytest-dev",
+      "name": "pytest",
+      "ref": "master",
+      "sha": "7f7a36478abe7dd1fa993b115d22606aa0e35e88",
+      "fixSha": "fe1fcfd0817dd756b5b11feaa154d8d10f66d554",
+      "language": "python"
+    },
+    "issue": {
+      "number": 7490,
+      "title": " skipping: fix dynamic xfail mark added in runtest not respected",
+      "body": "Pytest 6: Dynamically adding xfail marker in test no longer ignores failure\n<!--\r\nThanks for submitting an issue!\r\n\r\nHere's a quick checklist for what to provide:\r\n-->\r\n\r\n## Description\r\n\r\nWith pytest 5.x, we can dynamically add an xfail to a test `request` object using `request.node.add_marker(mark)` (see example below). In 5.x this treated the failing test like a a test marked statically with an `xfail`. With 6.0.0rc0 it raises. \r\n\r\n## Versions\r\n\r\n<details>\r\n\r\n```\r\n$ pip list\r\nPackage                       Version                         Location                                                      \r\n----------------------------- ------------------------------- --------------------------------------------------------------\r\na                             1.0                             \r\naioftp                        0.13.0                          \r\naiohttp                       3.6.2                           \r\nalabaster                     0.7.12                          \r\napipkg                        1.5                             \r\naplus                         0.11.0                          \r\nappdirs                       1.4.3                           \r\nappnope                       0.1.0                           \r\narrow                         0.15.7                          \r\naspy.yaml                     1.3.0                           \r\nastropy                       3.2.3                           \r\nasv                           0.4.1                           \r\nasync-timeout                 3.0.1                           \r\natomicwrites                  1.3.0                           \r\nattrs                         19.1.0                          \r\naws-sam-translator            1.15.1                          \r\naws-xray-sdk                  0.95                            \r\nBabel                         2.7.0                           \r\nbackcall                      0.1.0                           \r\nbinaryornot                   0.4.4                           \r\nblack                         19.10b0                         \r\nbleach                        3.1.0                           \r\nblurb                         1.0.7                           \r\nbokeh                         1.3.4                           \r\nboto                          2.49.0                          \r\nboto3                         1.7.84                          \r\nbotocore                      1.10.84                         \r\nbqplot                        0.12.12                         \r\nbranca                        0.3.1                           \r\ncachetools                    4.1.0                           \r\ncertifi                       2019.9.11                       \r\ncffi                          1.13.2                          \r\ncfgv                          2.0.1                           \r\ncfn-lint                      0.25.0                          \r\ncftime                        1.0.4.2                         \r\nchardet                       3.0.4                           \r\nClick                         7.0                             \r\nclick-plugins                 1.1.1                           \r\ncligj                         0.5.0                           \r\ncloudpickle                   1.2.2                           \r\ncolorama                      0.4.3                           \r\ncolorcet                      2.0.2                           \r\ncoloredlogs                   14.0                            \r\ncookiecutter                  1.7.2                           \r\ncookies                       2.2.1                           \r\ncoverage                      4.5.4                           \r\ncryptography                  2.8                             \r\ncycler                        0.10.0                          \r\nCython                        3.0a5                           \r\ncytoolz                       0.10.1                          \r\ndask                          2.4.0                           /Users/taugspurger/Envs/pandas-dev/lib/python3.7/site-packages\r\nDateTime                      4.3                             \r\ndecorator                     4.4.0                           \r\ndefusedxml                    0.6.0                           \r\nDeprecated                    1.2.7                           \r\ndistributed                   2.4.0                           \r\ndocker                        4.1.0                           \r\ndocutils                      0.15.2                          \r\necdsa                         0.14.1                          \r\nentrypoints                   0.3                             \r\net-xmlfile                    1.0.1                           \r\nexecnet                       1.7.1                           \r\nfastparquet                   0.3.3                           /Users/taugspurger/sandbox/fastparquet                        \r\nfeedparser                    5.2.1                           \r\nFiona                         1.8.8                           \r\nflake8                        3.7.9                           \r\nflake8-rst                    0.7.1                           \r\nfletcher                      0.3.1                           \r\nflit                          2.1.0                           \r\nflit-core                     2.1.0                           \r\nfsspec                        0.7.4                           \r\nfuture                        0.18.2                          \r\ngcsfs                         0.6.2                           \r\ngeopandas                     0.6.0+1.g95b8e1a.dirty          /Users/taugspurger/sandbox/geopandas                          \r\ngitdb2                        2.0.5                           \r\nGitPython                     3.0.2                           \r\ngoogle-auth                   1.16.1                          \r\ngoogle-auth-oauthlib          0.4.1                           \r\ngraphviz                      0.13                            \r\nh5py                          2.10.0                          \r\nHeapDict                      1.0.1                           \r\nholoviews                     1.12.6                          \r\nhumanfriendly                 8.1                             \r\nhunter                        3.1.3                           \r\nhvplot                        0.5.2                           \r\nhypothesis                    4.36.2                          \r\nidentify                      1.4.7                           \r\nidna                          2.8                             \r\nimagesize                     1.1.0                           \r\nimportlib-metadata            0.23                            \r\nimportlib-resources           1.0.2                           \r\niniconfig                     1.0.0                           \r\nintake                        0.5.3                           \r\nipydatawidgets                4.0.1                           \r\nipykernel                     5.1.2                           \r\nipyleaflet                    0.13.0                          \r\nipympl                        0.5.6                           \r\nipython                       7.11.1                          \r\nipython-genutils              0.2.0                           \r\nipyvolume                     0.5.2                           \r\nipyvue                        1.3.2                           \r\nipyvuetify                    1.4.0                           \r\nipywebrtc                     0.5.0                           \r\nipywidgets                    7.5.1                           \r\nisort                         4.3.21                          \r\njdcal                         1.4.1                           \r\njedi                          0.16.0                          \r\nJinja2                        2.11.2                          \r\njinja2-time                   0.2.0                           \r\njmespath                      0.9.4                           \r\njoblib                        0.14.1                          \r\njson5                         0.9.4                           \r\njsondiff                      1.1.1                           \r\njsonpatch                     1.24                            \r\njsonpickle                    1.2                             \r\njsonpointer                   2.0                             \r\njsonschema                    3.0.2                           \r\njupyter                       1.0.0                           \r\njupyter-client                5.3.3                           \r\njupyter-console               6.0.0                           \r\njupyter-core                  4.5.0                           \r\njupyterlab                    2.1.2                           \r\njupyterlab-server             1.1.4                           \r\nkiwisolver                    1.1.0                           \r\nline-profiler                 2.1.1                           \r\nllvmlite                      0.33.0                          \r\nlocket                        0.2.0                           /Users/taugspurger/sandbox/locket.py                          \r\nlxml                          4.5.0                           \r\nmanhole                       1.6.0                           \r\nMarkdown                      3.1.1                           \r\nMarkupSafe                    1.1.1                           \r\nmatplotlib                    3.2.2                           \r\nmccabe                        0.6.1                           \r\nmemory-profiler               0.55.0                          \r\nmistune                       0.8.4                           \r\nmock                          3.0.5                           \r\nmore-itertools                7.2.0                           \r\nmoto                          1.3.6                           \r\nmsgpack                       0.6.2                           \r\nmultidict                     4.5.2                           \r\nmunch                         2.3.2                           \r\nmypy                          0.730                           \r\nmypy-extensions               0.4.1                           \r\nnbconvert                     5.6.0                           \r\nnbformat                      4.4.0                           \r\nnbsphinx                      0.4.2                           \r\nnest-asyncio                  1.3.3                           \r\nnodeenv                       1.3.3                           \r\nnotebook                      6.0.1                           \r\nnumexpr                       2.7.1                           \r\nnumpy                         1.19.0                          \r\nnumpydoc                      1.0.0.dev0                      \r\noauthlib                      3.1.0                           \r\nodfpy                         1.4.0                           \r\nopenpyxl                      3.0.3                           \r\npackaging                     20.4                            \r\npandas                        1.1.0.dev0+1758.g035e1fe831     /Users/taugspurger/sandbox/pandas                             \r\npandas-sphinx-theme           0.0.1.dev0                      /Users/taugspurger/sandbox/pandas-sphinx-theme                \r\npandocfilters                 1.4.2                           \r\nparam                         1.9.2                           \r\nparfive                       1.0.0                           \r\nparso                         0.6.0                           \r\npartd                         1.0.0                           \r\npathspec                      0.8.0                           \r\npatsy                         0.5.1                           \r\npexpect                       4.7.0                           \r\npickleshare                   0.7.5                           \r\nPillow                        6.1.0                           \r\npip                           20.0.2                          \r\npluggy                        0.13.0                          \r\npoyo                          0.5.0                           \r\npre-commit                    1.18.3                          \r\nprogressbar2                  3.51.3                          \r\nprometheus-client             0.7.1                           \r\nprompt-toolkit                2.0.9                           \r\npsutil                        5.6.3                           \r\nptyprocess                    0.6.0                           \r\npy                            1.9.0                           \r\npyaml                         20.4.0                          \r\npyarrow                       0.16.0                          \r\npyasn1                        0.4.7                           \r\npyasn1-modules                0.2.8                           \r\npycodestyle                   2.5.0                           \r\npycparser                     2.19                            \r\npycryptodome                  3.9.8                           \r\npyct                          0.4.6                           \r\npydata-sphinx-theme           0.1.1                           \r\npydeps                        1.9.0                           \r\npyflakes                      2.1.1                           \r\nPyGithub                      1.44.1                          \r\nPygments                      2.4.2                           \r\nPyJWT                         1.7.1                           \r\npyparsing                     2.4.2                           \r\npyproj                        2.4.0                           \r\npyrsistent                    0.15.4                          \r\npytest                        5.4.3                           \r\npytest-asyncio                0.10.0                          \r\npytest-cov                    2.8.1                           \r\npytest-cover                  3.0.0                           \r\npytest-forked                 1.0.2                           \r\npytest-repeat                 0.8.0                           \r\npytest-xdist                  1.29.0                          \r\npython-boilerplate            0.1.0                           \r\npython-dateutil               2.8.0                           \r\npython-jose                   2.0.2                           \r\npython-jsonrpc-server         0.3.2                           \r\npython-language-server        0.31.4                          \r\npython-slugify                4.0.1                           \r\npython-utils                  2.4.0                           \r\npythreejs                     2.2.0                           \r\npytoml                        0.1.21                          \r\npytz                          2019.2                          \r\npyviz-comms                   0.7.2                           \r\nPyYAML                        5.1.2                           \r\npyzmq                         18.1.0                          \r\nqtconsole                     4.5.5                           \r\nregex                         2020.6.8                        \r\nrequests                      2.24.0                          \r\nrequests-oauthlib             1.3.0                           \r\nresponses                     0.10.6                          \r\nrsa                           4.0                             \r\nrstcheck                      3.3.1                           \r\ns3fs                          0.4.2                           \r\ns3transfer                    0.1.13                          \r\nscikit-learn                  0.22.2.post1                    \r\nscipy                         1.3.1                           \r\nseaborn                       0.9.0                           \r\nSend2Trash                    1.5.0                           \r\nsetuptools                    49.2.0                          \r\nShapely                       1.6.4.post2                     \r\nsix                           1.12.0                          \r\nsmmap2                        2.0.5                           \r\nsnakeviz                      2.0.1                           \r\nsnowballstemmer               1.9.1                           \r\nsortedcontainers              2.1.0                           \r\nsparse                        0.10.0                          \r\nSphinx                        3.1.1                           \r\nsphinxcontrib-applehelp       1.0.2                           \r\nsphinxcontrib-devhelp         1.0.2                           \r\nsphinxcontrib-htmlhelp        1.0.3                           \r\nsphinxcontrib-jsmath          1.0.1                           \r\nsphinxcontrib-qthelp          1.0.3                           \r\nsphinxcontrib-serializinghtml 1.1.4                           \r\nsphinxcontrib-websupport      1.1.2                           \r\nsphinxcontrib.youtube         0.1.2                           \r\nSQLAlchemy                    1.3.11                          \r\nsshpubkeys                    3.1.0                           \r\nstatsmodels                   0.10.2                          \r\nstdlib-list                   0.6.0                           \r\nsunpy                         1.1.dev518+gcad2d473f.d20191103 /Users/taugspurger/sandbox/sunpy                              \r\ntables                        3.6.1                           \r\ntabulate                      0.8.6                           \r\ntblib                         1.4.0                           \r\nterminado                     0.8.2                           \r\ntest                          1.0.0                           \r\ntestpath                      0.4.2                           \r\ntext-unidecode                1.3                             \r\nthrift                        0.13.0                          \r\ntoml                          0.10.0                          \r\ntoolz                         0.10.0                          \r\ntornado                       6.0.3                           \r\ntqdm                          4.37.0                          \r\ntraitlets                     4.3.2                           \r\ntraittypes                    0.2.1                           \r\ntyped-ast                     1.4.0                           \r\ntyping-extensions             3.7.4                           \r\nujson                         1.35                            \r\nurllib3                       1.25.5                          \r\nvaex                          3.0.0                           \r\nvaex-arrow                    0.5.1                           \r\nvaex-astro                    0.7.0                           \r\nvaex-core                     2.0.2                           \r\nvaex-hdf5                     0.6.0                           \r\nvaex-jupyter                  0.5.1.post0                     \r\nvaex-ml                       0.9.0                           \r\nvaex-server                   0.3.1                           \r\nvaex-viz                      0.4.0                           \r\nvirtualenv                    16.7.5                          \r\nwcwidth                       0.1.7                           \r\nwebencodings                  0.5.1                           \r\nwebsocket-client              0.56.0                          \r\nWerkzeug                      0.16.0                          \r\nwheel                         0.34.2                          \r\nwidgetsnbextension            3.5.1                           \r\nwrapt                         1.11.2                          \r\nxarray                        0.14.1+36.gb3d3b448             /Users/taugspurger/sandbox/xarray                             \r\nxlwt                          1.3.0                           \r\nxmltodict                     0.12.0                          \r\nyarl                          1.3.0                           \r\nzict                          1.0.0                           \r\nzipp                          0.6.0                           \r\nzope.interface                4.7.1                           \r\n```\r\n\r\n</details>\r\n\r\n- [ ] pytest and operating system versions\r\n\r\nPytest 6.0.1rc0 and MacOS 10.14.5\r\n\r\n```python\r\n# file: test_foo.py\r\nimport pytest\r\n\r\n\r\ndef test_xfail_test(request):\r\n    mark = pytest.mark.xfail(reason=\"xfail\")\r\n    request.node.add_marker(mark)\r\n    assert 0\r\n```\r\n\r\nWith 5.4.3\r\n\r\n```\r\n\r\n$ pytest -rsx test_foo.py\r\n=============================================================================== test session starts ================================================================================\r\nplatform darwin -- Python 3.7.6, pytest-5.4.3, py-1.9.0, pluggy-0.13.0\r\nhypothesis profile 'default' -> database=DirectoryBasedExampleDatabase('/Users/taugspurger/sandbox/.hypothesis/examples')\r\nrootdir: /Users/taugspurger/sandbox\r\nplugins: xdist-1.29.0, hypothesis-4.36.2, forked-1.0.2, repeat-0.8.0, asyncio-0.10.0, cov-2.8.1\r\ncollected 1 item\r\n\r\ntest_foo.py x                                                                                                                                                                [100%]\r\n\r\n============================================================================= short test summary info ==============================================================================\r\nXFAIL test_foo.py::test_xfail_test\r\n  xfail\r\n================================================================================ 1 xfailed in 0.07s ================================================================================\r\n```\r\n\r\nWith 6.0.0rc0\r\n\r\n```\r\n$ pytest -rsx test_foo.py\r\n=============================================================================== test session starts ================================================================================\r\nplatform darwin -- Python 3.7.6, pytest-6.0.0rc1, py-1.9.0, pluggy-0.13.0\r\nhypothesis profile 'default' -> database=DirectoryBasedExampleDatabase('/Users/taugspurger/sandbox/.hypothesis/examples')\r\nrootdir: /Users/taugspurger/sandbox\r\nplugins: xdist-1.29.0, hypothesis-4.36.2, forked-1.0.2, repeat-0.8.0, asyncio-0.10.0, cov-2.8.1\r\ncollected 1 item\r\n\r\ntest_foo.py F                                                                                                                                                                [100%]\r\n\r\n===================================================================================== FAILURES =====================================================================================\r\n_________________________________________________________________________________ test_xfail_test __________________________________________________________________________________\r\n\r\nrequest = <FixtureRequest for <Function test_xfail_test>>\r\n\r\n    def test_xfail_test(request):\r\n        mark = pytest.mark.xfail(reason=\"xfail\")\r\n        request.node.add_marker(mark)\r\n>       assert 0\r\nE       assert 0\r\n\r\ntest_foo.py:7: AssertionError\r\n```\r\n\n",
+      "url": "https://github.com/pytest-dev/pytest/pull/7490",
+      "labels": [],
+      "author": "bluetech",
+      "createdAt": "2020-07-13T22:20:10Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "medium",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "xfail",
+          "failed"
+        ]
+      },
+      "knownTestPath": "testing/test_skipping.py",
+      "knownFailingTests": [
+        "testing/test_skipping.py::TestXFail::test_dynamic_xfail_set_during_runtest_failed",
+        "testing/test_skipping.py::TestXFail::test_dynamic_xfail_set_during_runtest_passed_strict"
+      ]
+    }
+  },
+  {
+    "id": "sphinx-doc__sphinx-7686",
+    "source": "swt-bench",
+    "difficulty": "medium",
+    "repo": {
+      "owner": "sphinx-doc",
+      "name": "sphinx",
+      "ref": "3.x",
+      "sha": "752d3285d250bbaf673cff25e83f03f247502021",
+      "fixSha": "74351b2d43f264e66da3dce6e493188d0eebfae6",
+      "language": "python"
+    },
+    "issue": {
+      "number": 7686,
+      "title": "Fix #7685: autosummary: imported members are listed unexpectedly",
+      "body": "autosummary: The members variable for module template contains imported members\n**Describe the bug**\r\nautosummary: The members variable for module template contains imported members even if autosummary_imported_members is False.\r\n\r\n**To Reproduce**\r\n\r\n```\r\n# _templates/autosummary/module.rst\r\n{{ fullname | escape | underline }}\r\n\r\n.. automodule:: {{ fullname }}\r\n\r\n   .. autosummary::\r\n   {% for item in members %}\r\n      {{ item }}\r\n   {%- endfor %}\r\n\r\n```\r\n```\r\n# example.py\r\nimport os\r\n```\r\n```\r\n# index.rst\r\n.. autosummary::\r\n   :toctree: generated\r\n\r\n   example\r\n```\r\n```\r\n# conf.py\r\nautosummary_generate = True\r\nautosummary_imported_members = False\r\n```\r\n\r\nAs a result, I got following output:\r\n```\r\n# generated/example.rst\r\nexample\r\n=======\r\n\r\n.. automodule:: example\r\n\r\n   .. autosummary::\r\n\r\n      __builtins__\r\n      __cached__\r\n      __doc__\r\n      __file__\r\n      __loader__\r\n      __name__\r\n      __package__\r\n      __spec__\r\n      os\r\n```\r\n\r\n**Expected behavior**\r\nThe template variable `members` should not contain imported members when `autosummary_imported_members` is False.\r\n\r\n**Your project**\r\nNo\r\n\r\n**Screenshots**\r\nNo\r\n\r\n**Environment info**\r\n- OS: Mac\r\n- Python version: 3.8.2\r\n- Sphinx version: 3.1.0dev\r\n- Sphinx extensions:  sphinx.ext.autosummary\r\n- Extra tools: No\r\n\r\n**Additional context**\r\nNo\r\n\n",
+      "url": "https://github.com/sphinx-doc/sphinx/pull/7686",
+      "labels": [
+        "type:bug",
+        "extensions:autosummary"
+      ],
+      "author": "tk0miya",
+      "createdAt": "2020-05-17T14:09:10Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "medium",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "tests/test_ext_autosummary.py",
+      "knownFailingTests": [
+        "tests/test_ext_autosummary.py::test_autosummary_generate_content_for_module",
+        "tests/test_ext_autosummary.py::test_autosummary_generate_content_for_module_skipped"
+      ]
+    }
+  },
+  {
+    "id": "sphinx-doc__sphinx-7975",
+    "source": "swt-bench",
+    "difficulty": "medium",
+    "repo": {
+      "owner": "sphinx-doc",
+      "name": "sphinx",
+      "ref": "3.x",
+      "sha": "4ec6cbe341fd84468c448e20082c778043bbea4b",
+      "fixSha": "f65ef0e62352093326ca5000cc6940830d897b46",
+      "language": "python"
+    },
+    "issue": {
+      "number": 7975,
+      "title": "Fix #2050: Symbols sections are appeared twice in the index page",
+      "body": "Two sections called Symbols in index\nWhen using index entries with the following leading characters: _@_, _\u00a3_, and _\u2190_ I get two sections called _Symbols_ in the HTML output, the first containing all _@_ entries before \u201dnormal\u201d words and the second containing _\u00a3_ and _\u2190_ entries after the \u201dnormal\u201d words.  Both have the same anchor in HTML so the links at the top of the index page contain two _Symbols_ links, one before the letters and one after, but both lead to the first section.\n\n",
+      "url": "https://github.com/sphinx-doc/sphinx/pull/7975",
+      "labels": [
+        "type:bug",
+        "markup"
+      ],
+      "author": "tk0miya",
+      "createdAt": "2020-07-18T06:39:32Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "low",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "tests/test_environment_indexentries.py",
+      "knownFailingTests": [
+        "tests/test_environment_indexentries.py::test_create_single_index"
+      ]
+    }
+  },
+  {
+    "id": "sympy__sympy-11897",
+    "source": "swt-bench",
+    "difficulty": "medium",
+    "repo": {
+      "owner": "sympy",
+      "name": "sympy",
+      "ref": "master",
+      "sha": "e2918c1205c47345eb73c9be68b14c0f15fdeb17",
+      "fixSha": "779634e85281c1d36c623e497222bf53a5d97c38",
+      "language": "python"
+    },
+    "issue": {
+      "number": 11897,
+      "title": "Improved Latex Printing of Piecewise Functions",
+      "body": "LaTeX printer inconsistent with pretty printer\nThe LaTeX printer should always give the same output as the pretty printer, unless better output is possible from LaTeX. In some cases it is inconsistent. For instance:\n\n``` py\nIn [9]: var('x', positive=True)\nOut[9]: x\n\nIn [10]: latex(exp(-x)*log(x))\nOut[10]: '\\\\frac{1}{e^{x}} \\\\log{\\\\left (x \\\\right )}'\n\nIn [11]: pprint(exp(-x)*log(x))\n -x\n\u212f  \u22c5log(x)\n```\n\n(I also don't think the assumptions should affect printing). \n\n``` py\nIn [14]: var('x y')\nOut[14]: (x, y)\n\nIn [15]: latex(1/(x + y)/2)\nOut[15]: '\\\\frac{1}{2 x + 2 y}'\n\nIn [16]: pprint(1/(x + y)/2)\n    1\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n2\u22c5(x + y)\n```\n\n",
+      "url": "https://github.com/sympy/sympy/pull/11897",
+      "labels": [],
+      "author": "arihantparsoya",
+      "createdAt": "2016-12-03T14:40:51Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "low",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "sympy/printing/tests/test_latex.py",
+      "knownFailingTests": [
+        "test_latex_Piecewise"
+      ]
+    }
+  },
+  {
+    "id": "psf__requests-1963",
+    "source": "swt-bench",
+    "difficulty": "hard",
+    "repo": {
+      "owner": "psf",
+      "name": "requests",
+      "ref": "master",
+      "sha": "110048f9837f8441ea536804115e80b69f400277",
+      "fixSha": "61e05313ab91409070490a60ab454a5e126896bc",
+      "language": "python"
+    },
+    "issue": {
+      "number": 1963,
+      "title": "Fix #1955: Do not use original request in redirect",
+      "body": "`Session.resolve_redirects` copies the original request for all subsequent requests, can cause incorrect method selection\nConsider the following redirection chain:\n\n```\nPOST /do_something HTTP/1.1\nHost: server.example.com\n...\n\nHTTP/1.1 303 See Other\nLocation: /new_thing_1513\n\nGET /new_thing_1513\nHost: server.example.com\n...\n\nHTTP/1.1 307 Temporary Redirect\nLocation: //failover.example.com/new_thing_1513\n```\n\nThe intermediate 303 See Other has caused the POST to be converted to\na GET.  The subsequent 307 should preserve the GET.  However, because\n`Session.resolve_redirects` starts each iteration by copying the _original_\nrequest object, Requests will issue a POST!\n\n",
+      "url": "https://github.com/psf/requests/pull/1963",
+      "labels": [
+        "Ready To Merge",
+        "Minion Seal of Approval"
+      ],
+      "author": "sigmavirus24",
+      "createdAt": "2014-03-15T17:42:11Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "high",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "test_requests.py",
+      "knownFailingTests": [
+        "test_requests.py::RequestsTestCase::test_DIGESTAUTH_QUOTES_QOP_VALUE",
+        "test_requests.py::RequestsTestCase::test_DIGESTAUTH_WRONG_HTTP_401_GET",
+        "test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE",
+        "test_requests.py::RequestsTestCase::test_DIGEST_HTTP_200_OK_GET",
+        "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES_WITH_DATA",
+        "test_requests.py::RequestsTestCase::test_param_cookiejar_works",
+        "test_requests.py::TestRedirects::test_requests_are_updated_each_time"
+      ]
+    }
+  },
+  {
+    "id": "psf__requests-2148",
+    "source": "swt-bench",
+    "difficulty": "hard",
+    "repo": {
+      "owner": "psf",
+      "name": "requests",
+      "ref": "master",
+      "sha": "fe693c492242ae532211e0c173324f09ca8cf227",
+      "fixSha": "a1b31397de4bfd3e37709ef4e4c9690529814334",
+      "language": "python"
+    },
+    "issue": {
+      "number": 2148,
+      "title": "Handle socket errors in iter_content",
+      "body": "socket.error exception not caught/wrapped in a requests exception (ConnectionError perhaps?)\nI just noticed a case where I had a socket reset on me, and was raised to me as a raw socket error as opposed to something like a requests.exceptions.ConnectionError:\n\n```\n  File \"/home/rtdean/***/***/***/***/***/***.py\", line 67, in dir_parse\n    root = ElementTree.fromstring(response.text)\n  File \"/home/rtdean/.pyenv/versions/2.7.6/lib/python2.7/site-packages/requests-2.3.0-py2.7.egg/requests/models.py\", line 721, in text\n    if not self.content:\n  File \"/home/rtdean/.pyenv/versions/2.7.6/lib/python2.7/site-packages/requests-2.3.0-py2.7.egg/requests/models.py\", line 694, in content\n    self._content = bytes().join(self.iter_content(CONTENT_CHUNK_SIZE)) or bytes()\n  File \"/home/rtdean/.pyenv/versions/2.7.6/lib/python2.7/site-packages/requests-2.3.0-py2.7.egg/requests/models.py\", line 627, in generate\n    for chunk in self.raw.stream(chunk_size, decode_content=True):\n  File \"/home/rtdean/.pyenv/versions/2.7.6/lib/python2.7/site-packages/requests-2.3.0-py2.7.egg/requests/packages/urllib3/response.py\", line 240, in stream\n    data = self.read(amt=amt, decode_content=decode_content)\n  File \"/home/rtdean/.pyenv/versions/2.7.6/lib/python2.7/site-packages/requests-2.3.0-py2.7.egg/requests/packages/urllib3/response.py\", line 187, in read\n    data = self._fp.read(amt)\n  File \"/home/rtdean/.pyenv/versions/2.7.6/lib/python2.7/httplib.py\", line 543, in read\n    return self._read_chunked(amt)\n  File \"/home/rtdean/.pyenv/versions/2.7.6/lib/python2.7/httplib.py\", line 612, in _read_chunked\n    value.append(self._safe_read(chunk_left))\n  File \"/home/rtdean/.pyenv/versions/2.7.6/lib/python2.7/httplib.py\", line 658, in _safe_read\n    chunk = self.fp.read(min(amt, MAXAMOUNT))\n  File \"/home/rtdean/.pyenv/versions/2.7.6/lib/python2.7/socket.py\", line 380, in read\n    data = self._sock.recv(left)\n  File \"/home/rtdean/.pyenv/versions/2.7.6/lib/python2.7/site-packages/gevent-1.0.1-py2.7-linux-x86_64.egg/gevent/socket.py\", line 385, in recv\n    return sock.recv(*args)\nsocket.error: [Errno 104] Connection reset by peer\n```\n\nNot sure if this is by accident or design... in general, I guess I'd expect a requests exception when using requests, but I can start looking for socket errors and the like as well.\n\n",
+      "url": "https://github.com/psf/requests/pull/2148",
+      "labels": [
+        "Ready To Merge",
+        "Minion Seal of Approval"
+      ],
+      "author": "romanlevin",
+      "createdAt": "2014-07-24T21:03:03Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "high",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "exception",
+        "matchAny": [
+          "socket.error",
+          "ConnectionError"
+        ]
+      },
+      "knownTestPath": "test_requests.py",
+      "knownFailingTests": [
+        "test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE",
+        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_ALTERNATIVE",
+        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_HEAD",
+        "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES",
+        "test_requests.py::RequestsTestCase::test_auth_is_stripped_on_redirect_off_host",
+        "test_requests.py::RequestsTestCase::test_basicauth_with_netrc",
+        "test_requests.py::RequestsTestCase::test_cookie_quote_wrapped",
+        "test_requests.py::RequestsTestCase::test_generic_cookiejar_works",
+        "test_requests.py::RequestsTestCase::test_iter_content_handles_socket_error",
+        "test_requests.py::RequestsTestCase::test_unicode_multipart_post"
+      ]
+    }
+  },
+  {
+    "id": "psf__requests-863",
+    "source": "swt-bench",
+    "difficulty": "hard",
+    "repo": {
+      "owner": "psf",
+      "name": "requests",
+      "ref": "develop",
+      "sha": "a0df2cbb10419037d11d04352b3175405ab52941",
+      "fixSha": "14fca026c5d359035a0825b250c99b8c1b04cc33",
+      "language": "python"
+    },
+    "issue": {
+      "number": 863,
+      "title": "Fix #785 & add regression test.",
+      "body": "Allow lists in the dict values of the hooks argument\nCurrently the Request class has a .register_hook() method but it parses the dictionary it expects from it's hooks argument weirdly: the argument can only specify one hook function per hook.  If you pass in a list of hook functions per hook the code in Request.**init**() will wrap the list in a list which then fails when the hooks are consumed (since a list is not callable).  This is especially annoying since you can not use multiple hooks from a session.  The only way to get multiple hooks now is to create the request object without sending it, then call .register_hook() multiple times and then finally call .send().\n\nThis would all be much easier if Request.**init**() parsed the hooks parameter in a way that it accepts lists as it's values.\n\n",
+      "url": "https://github.com/psf/requests/pull/863",
+      "labels": [],
+      "author": "sigmavirus24",
+      "createdAt": "2012-09-20T15:48:00Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "medium",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "tests/test_requests.py",
+      "knownFailingTests": [
+        "tests/test_requests.py::RequestsTestSuite::test_POSTBIN_GET_POST_FILES_WITH_HEADERS",
+        "tests/test_requests.py::RequestsTestSuite::test_nonurlencoded_postdata",
+        "tests/test_requests.py::RequestsTestSuite::test_prefetch_redirect_bug",
+        "tests/test_requests.py::RequestsTestSuite::test_urlencoded_post_data"
+      ]
+    }
+  },
+  {
+    "id": "sphinx-doc__sphinx-8282",
+    "source": "swt-bench",
+    "difficulty": "hard",
+    "repo": {
+      "owner": "sphinx-doc",
+      "name": "sphinx",
+      "ref": "3.x",
+      "sha": "2c2335bbb8af99fa132e1573bbf45dc91584d5a2",
+      "fixSha": "293dced4d4213d924310160a112d0907e02f8059",
+      "language": "python"
+    },
+    "issue": {
+      "number": 8282,
+      "title": "Fix #7785: autodoc_typehints=none does not effect to overloads",
+      "body": "autodoc_typehints does not effect to overloaded callables\n**Describe the bug**\r\nautodoc_typehints does not effect to overloaded callables.\r\n\r\n**To Reproduce**\r\n\r\n```\r\n# in conf.py\r\nautodoc_typehints = 'none'\r\n```\r\n```\r\n# in index.rst\r\n.. automodule:: example\r\n   :members:\r\n   :undoc-members:\r\n```\r\n```\r\n# in example.py\r\nfrom typing import overload\r\n\r\n\r\n@overload\r\ndef foo(x: int) -> int:\r\n    ...\r\n\r\n\r\n@overload\r\ndef foo(x: float) -> float:\r\n    ...\r\n\r\n\r\ndef foo(x):\r\n    return x\r\n```\r\n\r\n**Expected behavior**\r\nAll typehints for overloaded callables are obeyed `autodoc_typehints` setting.\r\n\r\n**Your project**\r\nNo\r\n\r\n**Screenshots**\r\nNo\r\n\r\n**Environment info**\r\n- OS: Mac\r\n- Python version: 3.8.2\r\n- Sphinx version: 3.1.0dev\r\n- Sphinx extensions: sphinx.ext.autodoc\r\n- Extra tools: No\r\n\r\n**Additional context**\r\nNo\n",
+      "url": "https://github.com/sphinx-doc/sphinx/pull/8282",
+      "labels": [
+        "type:bug",
+        "extensions:autodoc"
+      ],
+      "author": "tk0miya",
+      "createdAt": "2020-10-04T09:04:48Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "medium",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "tests/test_ext_autodoc_configs.py",
+      "knownFailingTests": [
+        "tests/test_ext_autodoc_configs.py::test_autodoc_typehints_none_for_overload"
+      ]
+    }
+  },
+  {
+    "id": "sympy__sympy-13146",
+    "source": "swt-bench",
+    "difficulty": "hard",
+    "repo": {
+      "owner": "sympy",
+      "name": "sympy",
+      "ref": "master",
+      "sha": "b678d8103e48fdb1af335dbf0080b3d5366f2d17",
+      "fixSha": "6eb2021ef3164db92e8057d6e03c2c620f1be795",
+      "language": "python"
+    },
+    "issue": {
+      "number": 13146,
+      "title": "Fix evalf of AssocOp not changing precision of floats in non-number arguments",
+      "body": "Exponent doesn't fully simplify\nSay I have code like this:\n\n```\nimport sympy\nfrom sympy import *\nx=Symbol('x')\nexpr1 = S(1)/2*x**2.5\nexpr2 = S(1)*x**(S(5)/2)/2\nres = expr1-expr2\nres= simplify(res.evalf(5))\nprint res\n```\n\nThe output is\n`-0.5*x**2.5 + 0.5*x**2.5`\nHow do I simplify it to 0?\n\n",
+      "url": "https://github.com/sympy/sympy/pull/13146",
+      "labels": [],
+      "author": "ylemkimon",
+      "createdAt": "2017-08-18T05:51:45Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "medium",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "sympy/core/tests/test_evalf.py",
+      "knownFailingTests": [
+        "test_evalf_bugs"
+      ]
+    }
+  },
+  {
+    "id": "sympy__sympy-13915",
+    "source": "swt-bench",
+    "difficulty": "hard",
+    "repo": {
+      "owner": "sympy",
+      "name": "sympy",
+      "ref": "master",
+      "sha": "5c1644ff85e15752f9f8721bc142bfbf975e7805",
+      "fixSha": "bf933462ec4072edc64217de81feb457f872cc85",
+      "language": "python"
+    },
+    "issue": {
+      "number": 13915,
+      "title": "Expression should be NaN when Mul \"cancels out infinity\"",
+      "body": "Issue with a substitution that leads to an undefined expression\n```\r\nPython 3.6.4 |Anaconda custom (64-bit)| (default, Dec 21 2017, 15:39:08) \r\nType 'copyright', 'credits' or 'license' for more information\r\nIPython 6.2.1 -- An enhanced Interactive Python. Type '?' for help.\r\n\r\nIn [1]: from sympy import *\r\n\r\nIn [2]: a,b = symbols('a,b')\r\n\r\nIn [3]: r = (1/(a+b) + 1/(a-b))/(1/(a+b) - 1/(a-b))\r\n\r\nIn [4]: r.subs(b,a)\r\nOut[4]: 1\r\n\r\nIn [6]: import sympy\r\n\r\nIn [7]: sympy.__version__\r\nOut[7]: '1.1.1'\r\n```\r\n\r\nIf b is substituted by a, r is undefined. It is possible to calculate the limit\r\n`r.limit(b,a) # -1`\r\n\r\nBut whenever a subexpression of r is undefined, r itself is undefined.\n",
+      "url": "https://github.com/sympy/sympy/pull/13915",
+      "labels": [],
+      "author": "normalhuman",
+      "createdAt": "2018-01-13T20:41:07Z"
+    },
+    "groundTruth": {
+      "classificationType": "bug",
+      "severity": "high",
+      "reproExpected": true,
+      "failureSignal": {
+        "kind": "assertion",
+        "matchAny": [
+          "nan",
+          "AssertionError"
+        ]
+      },
+      "knownTestPath": "sympy/core/tests/test_arit.py",
+      "knownFailingTests": [
+        "test_Mul_does_not_cancel_infinities"
+      ]
+    }
+  }
+]
