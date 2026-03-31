@@ -1,10 +1,11 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
   internalQuery,
   type MutationCtx,
+  type QueryCtx,
 } from "./_generated/server";
 import {
   approvalActionFromComment,
@@ -41,6 +42,42 @@ const approvalWebhookResultValidator = v.object({
   ignored: v.optional(v.boolean()),
 });
 
+// GitHub.com only supports manual redelivery for recent deliveries and current
+// GHES docs allow redelivery for up to 7 days, so keep idempotency records for
+// 7 days to preserve normal duplicate-delivery protection across environments.
+// https://docs.github.com/en/webhooks/using-webhooks/handling-failed-webhook-deliveries
+// https://docs.github.com/en/enterprise-server@latest/webhooks/using-webhooks/automatically-redelivering-failed-deliveries-for-a-github-app-webhook
+export const WEBHOOK_DELIVERY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const WEBHOOK_DELIVERY_CLEANUP_BATCH_SIZE = 128;
+
+type WebhookDeliveryReaderCtx = {
+  db: QueryCtx["db"];
+};
+
+function getWebhookDeliveryRetentionCutoff(now = Date.now()) {
+  return now - WEBHOOK_DELIVERY_RETENTION_MS;
+}
+
+function isDeliveryWithinRetentionWindow(
+  delivery: Pick<Doc<"webhookDeliveries">, "processedAt"> | null,
+  now = Date.now(),
+) {
+  return (
+    delivery !== null &&
+    delivery.processedAt >= getWebhookDeliveryRetentionCutoff(now)
+  );
+}
+
+async function getWebhookDeliveryRecord(
+  ctx: WebhookDeliveryReaderCtx,
+  deliveryId: string,
+) {
+  return await ctx.db
+    .query("webhookDeliveries")
+    .withIndex("by_delivery_id", (query) => query.eq("deliveryId", deliveryId))
+    .unique();
+}
+
 function createWebhookStore(
   ctx: MutationCtx,
 ): WebhookStore<
@@ -52,16 +89,21 @@ function createWebhookStore(
 > {
   return {
     hasDelivery: async (deliveryId) => {
-      const delivery = await ctx.db
-        .query("webhookDeliveries")
-        .withIndex("by_delivery_id", (query) =>
-          query.eq("deliveryId", deliveryId),
-        )
-        .unique();
-
-      return delivery !== null;
+      const delivery = await getWebhookDeliveryRecord(ctx, deliveryId);
+      return isDeliveryWithinRetentionWindow(delivery);
     },
     recordDelivery: async ({ deliveryId, event, action, processedAt }) => {
+      const existingDelivery = await getWebhookDeliveryRecord(ctx, deliveryId);
+
+      if (existingDelivery) {
+        await ctx.db.patch(existingDelivery._id, {
+          event,
+          action,
+          processedAt,
+        });
+        return;
+      }
+
       await ctx.db.insert("webhookDeliveries", {
         deliveryId,
         event,
@@ -113,7 +155,13 @@ function createWebhookStore(
         githubIssueNumber: input.githubIssueNumber,
       };
     },
-    createRun: async ({ issueId, repo, githubIssueNumber, triggeredBy, startedAt }) => {
+    createRun: async ({
+      issueId,
+      repo,
+      githubIssueNumber,
+      triggeredBy,
+      startedAt,
+    }) => {
       const runId = `${new Date(startedAt).toISOString()}_${repo.fullName}_${githubIssueNumber.toString()}`;
 
       return await ctx.db.insert("runs", {
@@ -153,12 +201,59 @@ function createWebhookStore(
 export const getDelivery = internalQuery({
   args: { deliveryId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    return await getWebhookDeliveryRecord(ctx, args.deliveryId);
+  },
+});
+
+export const cleanupExpiredDeliveries = internalMutation({
+  args: {
+    batchSize: v.optional(v.number()),
+    cutoffTime: v.optional(v.number()),
+    scheduleContinuation: v.optional(v.boolean()),
+  },
+  returns: v.object({
+    cutoffTime: v.number(),
+    deletedCount: v.number(),
+    hasMore: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const cutoffTime = args.cutoffTime ?? getWebhookDeliveryRetentionCutoff();
+    const batchSize = Math.max(
+      1,
+      Math.floor(args.batchSize ?? WEBHOOK_DELIVERY_CLEANUP_BATCH_SIZE),
+    );
+    const queryLimit = batchSize + 1;
+    const expiredDeliveries = await ctx.db
       .query("webhookDeliveries")
-      .withIndex("by_delivery_id", (query) =>
-        query.eq("deliveryId", args.deliveryId),
+      .withIndex("by_processed_at", (query) =>
+        query.lt("processedAt", cutoffTime),
       )
-      .unique();
+      .take(queryLimit);
+    const deliveriesToDelete = expiredDeliveries.slice(0, batchSize);
+
+    for (const delivery of deliveriesToDelete) {
+      await ctx.db.delete(delivery._id);
+    }
+
+    const hasMore = expiredDeliveries.length > batchSize;
+
+    if (hasMore && args.scheduleContinuation !== false) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.webhooks.cleanupExpiredDeliveries,
+        {
+          batchSize,
+          cutoffTime,
+          scheduleContinuation: true,
+        },
+      );
+    }
+
+    return {
+      cutoffTime,
+      deletedCount: deliveriesToDelete.length,
+      hasMore,
+    };
   },
 });
 

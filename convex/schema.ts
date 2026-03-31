@@ -461,5 +461,7 @@ export default defineSchema({
     event: v.string(),
     action: v.string(),
     processedAt: v.float64(),
-  }).index("by_delivery_id", ["deliveryId"]),
+  })
+    .index("by_delivery_id", ["deliveryId"])
+    .index("by_processed_at", ["processedAt"]),
 });

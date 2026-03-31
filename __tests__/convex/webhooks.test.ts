@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { internal } from "@/convex/_generated/api";
+import { WEBHOOK_DELIVERY_RETENTION_MS } from "@/convex/webhooks";
 import {
   createTestConvex,
   seedInstallation,
@@ -9,12 +10,14 @@ import {
   seedUser,
 } from "@/test-support/convex/testHelpers";
 
-function buildWebhookPayload(overrides: {
-  commentBody?: string;
-  fullName?: string;
-  labelName?: string;
-  installationId?: bigint;
-} = {}) {
+function buildWebhookPayload(
+  overrides: {
+    commentBody?: string;
+    fullName?: string;
+    labelName?: string;
+    installationId?: bigint;
+  } = {},
+) {
   return {
     repository: {
       full_name: overrides.fullName ?? "repo-butler/example",
@@ -186,7 +189,7 @@ describe("webhooks.processWebhook", () => {
     expect(runs).toHaveLength(0);
   });
 
-  it("deduplicates repeated deliveries", async () => {
+  it("deduplicates repeated deliveries within the retention window", async () => {
     const t = createTestConvex();
     const { userId } = await seedUser(t);
     const installationId = await seedInstallation(t, userId);
@@ -224,6 +227,163 @@ describe("webhooks.processWebhook", () => {
     expect(runs).toHaveLength(1);
   });
 
+  it("reprocesses a delivery after the retention window expires", async () => {
+    const t = createTestConvex();
+    const { userId } = await seedUser(t);
+    const installationId = await seedInstallation(t, userId);
+    await seedRepo(t, { userId, installationId });
+
+    await t.mutation(internal.webhooks.processWebhook, {
+      deliveryId: "delivery_expired",
+      event: "issues",
+      action: "opened",
+      payload: buildWebhookPayload(),
+    });
+
+    const expiredProcessedAt = await t.run(async (ctx) => {
+      const delivery = await ctx.db
+        .query("webhookDeliveries")
+        .withIndex("by_delivery_id", (q) =>
+          q.eq("deliveryId", "delivery_expired"),
+        )
+        .unique();
+
+      if (!delivery) {
+        throw new Error("expected seeded webhook delivery");
+      }
+
+      const processedAt = Date.now() - WEBHOOK_DELIVERY_RETENTION_MS - 1_000;
+      await ctx.db.patch(delivery._id, { processedAt });
+      return processedAt;
+    });
+
+    const second = await t.mutation(internal.webhooks.processWebhook, {
+      deliveryId: "delivery_expired",
+      event: "issues",
+      action: "opened",
+      payload: buildWebhookPayload(),
+    });
+
+    expect(second).toEqual({ duplicate: false, dispatch: "issue_opened" });
+
+    const { deliveries, runs } = await t.run(async (ctx) => {
+      return {
+        deliveries: await ctx.db
+          .query("webhookDeliveries")
+          .withIndex("by_delivery_id", (q) =>
+            q.eq("deliveryId", "delivery_expired"),
+          )
+          .collect(),
+        runs: await ctx.db.query("runs").collect(),
+      };
+    });
+
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0].processedAt).toBeGreaterThan(expiredProcessedAt);
+    expect(runs).toHaveLength(2);
+  });
+
+  it("cleans up expired deliveries without deleting active ones", async () => {
+    const t = createTestConvex();
+    const cutoffTime = Date.now() - WEBHOOK_DELIVERY_RETENTION_MS;
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("webhookDeliveries", {
+        deliveryId: "delivery_active",
+        event: "issues",
+        action: "opened",
+        processedAt: cutoffTime + 60_000,
+      });
+      await ctx.db.insert("webhookDeliveries", {
+        deliveryId: "delivery_expired_a",
+        event: "issues",
+        action: "opened",
+        processedAt: cutoffTime - 60_000,
+      });
+      await ctx.db.insert("webhookDeliveries", {
+        deliveryId: "delivery_expired_b",
+        event: "issues",
+        action: "opened",
+        processedAt: cutoffTime - 120_000,
+      });
+    });
+
+    const firstPass = await t.mutation(
+      internal.webhooks.cleanupExpiredDeliveries,
+      {
+        batchSize: 1,
+        cutoffTime,
+        scheduleContinuation: false,
+      },
+    );
+
+    expect(firstPass).toEqual({
+      cutoffTime,
+      deletedCount: 1,
+      hasMore: true,
+    });
+
+    const secondPass = await t.mutation(
+      internal.webhooks.cleanupExpiredDeliveries,
+      {
+        batchSize: 10,
+        cutoffTime,
+        scheduleContinuation: false,
+      },
+    );
+
+    expect(secondPass).toEqual({
+      cutoffTime,
+      deletedCount: 1,
+      hasMore: false,
+    });
+
+    const remainingDeliveries = await t.run(async (ctx) => {
+      return await ctx.db.query("webhookDeliveries").collect();
+    });
+
+    expect(remainingDeliveries).toEqual([
+      expect.objectContaining({
+        deliveryId: "delivery_active",
+      }),
+    ]);
+  });
+
+  it("does not schedule another cleanup batch when the final batch is full", async () => {
+    const t = createTestConvex();
+    const cutoffTime = Date.now() - WEBHOOK_DELIVERY_RETENTION_MS;
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("webhookDeliveries", {
+        deliveryId: "delivery_expired_exact_a",
+        event: "issues",
+        action: "opened",
+        processedAt: cutoffTime - 60_000,
+      });
+      await ctx.db.insert("webhookDeliveries", {
+        deliveryId: "delivery_expired_exact_b",
+        event: "issues",
+        action: "opened",
+        processedAt: cutoffTime - 120_000,
+      });
+    });
+
+    const result = await t.mutation(
+      internal.webhooks.cleanupExpiredDeliveries,
+      {
+        batchSize: 2,
+        cutoffTime,
+        scheduleContinuation: false,
+      },
+    );
+
+    expect(result).toEqual({
+      cutoffTime,
+      deletedCount: 2,
+      hasMore: false,
+    });
+  });
+
   it.each([
     [
       "unknown event type",
@@ -238,7 +398,9 @@ describe("webhooks.processWebhook", () => {
           action: "opened",
           payload: buildWebhookPayload(),
         });
-        const runs = await t.run(async (ctx) => await ctx.db.query("runs").collect());
+        const runs = await t.run(
+          async (ctx) => await ctx.db.query("runs").collect(),
+        );
         expect(result).toEqual({ duplicate: false, dispatch: "ignored" });
         expect(runs).toHaveLength(0);
       },
@@ -253,7 +415,9 @@ describe("webhooks.processWebhook", () => {
           action: "opened",
           payload: buildWebhookPayload({ fullName: "repo-butler/missing" }),
         });
-        const runs = await t.run(async (ctx) => await ctx.db.query("runs").collect());
+        const runs = await t.run(
+          async (ctx) => await ctx.db.query("runs").collect(),
+        );
         expect(result).toEqual({ duplicate: false, dispatch: "ignored" });
         expect(runs).toHaveLength(0);
       },
@@ -275,7 +439,9 @@ describe("webhooks.processWebhook", () => {
           action: "opened",
           payload: buildWebhookPayload(),
         });
-        const runs = await t.run(async (ctx) => await ctx.db.query("runs").collect());
+        const runs = await t.run(
+          async (ctx) => await ctx.db.query("runs").collect(),
+        );
         expect(result).toEqual({ duplicate: false, dispatch: "ignored" });
         expect(runs).toHaveLength(0);
       },
@@ -330,7 +496,9 @@ describe("webhooks.processWebhook", () => {
 
     expect(result).toEqual({ duplicate: false, dispatch: "ignored" });
 
-    const runs = await t.run(async (ctx) => await ctx.db.query("runs").collect());
+    const runs = await t.run(
+      async (ctx) => await ctx.db.query("runs").collect(),
+    );
     expect(runs).toHaveLength(0);
   });
 });
