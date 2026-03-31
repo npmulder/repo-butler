@@ -15,8 +15,6 @@ import type {
   SandboxResult,
 } from "./types";
 
-type WorkflowStage = "reproduce" | "verify";
-
 type SharedInputs = {
   dispatchId: string;
   runId: string;
