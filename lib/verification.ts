@@ -53,6 +53,29 @@ function buildPolicyChecks(rerunResults: SandboxResult[]) {
   } as const;
 }
 
+function buildTerminalVerification(
+  contract: ReproContract,
+  rerunResults: SandboxResult[],
+  policyChecks: ReturnType<typeof buildPolicyChecks>,
+  verdict: Verification["verdict"],
+  evidence: Verification["evidence"],
+  notes: string,
+): Verification {
+  return {
+    schema_version: "rb.verification.v1",
+    run_id: contract.run_id,
+    verdict,
+    determinism: {
+      reruns: rerunResults.length,
+      fails: 0,
+      flake_rate: 1,
+    },
+    policy_checks: policyChecks,
+    evidence,
+    notes,
+  };
+}
+
 function matchesContractFailureSignal(
   contract: ReproContract,
   result: SandboxResult,
@@ -100,35 +123,63 @@ export function verifyReproduction(
     contract.acceptance.must_not_require_network &&
     policyChecks.network_used
   ) {
-    return {
-      schema_version: "rb.verification.v1",
-      run_id: contract.run_id,
-      verdict: "policy_violation",
-      determinism: {
-        reruns: rerunResults.length,
-        fails: 0,
-        flake_rate: 1,
-      },
-      policy_checks: policyChecks,
-      evidence: fallbackEvidence,
-      notes: "Network was enabled during verification despite a no-network contract.",
-    };
+    return buildTerminalVerification(
+      contract,
+      rerunResults,
+      policyChecks,
+      "policy_violation",
+      fallbackEvidence,
+      "Network was enabled during verification despite a no-network contract.",
+    );
   }
 
   if (!contract.sandbox_policy.run_as_root && policyChecks.ran_as_root) {
-    return {
-      schema_version: "rb.verification.v1",
-      run_id: contract.run_id,
-      verdict: "policy_violation",
-      determinism: {
-        reruns: rerunResults.length,
-        fails: 0,
-        flake_rate: 1,
-      },
-      policy_checks: policyChecks,
-      evidence: fallbackEvidence,
-      notes: "Verification sandbox ran as root, violating the sandbox policy.",
-    };
+    return buildTerminalVerification(
+      contract,
+      rerunResults,
+      policyChecks,
+      "policy_violation",
+      fallbackEvidence,
+      "Verification sandbox ran as root, violating the sandbox policy.",
+    );
+  }
+
+  const envSetupResult = rerunResults.find(
+    (result) => result.failureType === "env_setup",
+  );
+
+  if (envSetupResult) {
+    return buildTerminalVerification(
+      contract,
+      rerunResults,
+      policyChecks,
+      "env_setup_failed",
+      buildEvidence(
+        envSetupResult,
+        findVerificationStep(envSetupResult),
+        reproArtifact.file_path,
+      ),
+      "Verification could not complete because sandbox environment setup failed on at least one rerun.",
+    );
+  }
+
+  if (contract.acceptance.failure_signal.kind !== "timeout") {
+    const timeoutResult = rerunResults.find((result) => result.status === "timeout");
+
+    if (timeoutResult) {
+      return buildTerminalVerification(
+        contract,
+        rerunResults,
+        policyChecks,
+        "budget_exhausted",
+        buildEvidence(
+          timeoutResult,
+          findVerificationStep(timeoutResult),
+          reproArtifact.file_path,
+        ),
+        "Verification timed out before reproducing the expected non-timeout failure signal.",
+      );
+    }
   }
 
   let failCount = 0;

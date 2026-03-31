@@ -488,6 +488,30 @@ async function storeGeneratedReproContract(
   return contract;
 }
 
+function buildVerificationSandboxPolicy(
+  contract: ReturnType<typeof generateReproContract>,
+) {
+  if (contract.sandbox_policy.run_as_root) {
+    throw new Error(
+      "Verification sandbox does not support contracts with run_as_root=true",
+    );
+  }
+
+  if (contract.sandbox_policy.secrets_mount !== "none") {
+    throw new Error(
+      `Verification sandbox does not support contracts with secrets_mount=${contract.sandbox_policy.secrets_mount}`,
+    );
+  }
+
+  return {
+    network: contract.sandbox_policy.network,
+    runAsRoot: false as const,
+    secretsMount: "none" as const,
+    wallClockTimeout: contract.budgets.wall_clock_seconds,
+    maxIterations: contract.budgets.max_iterations,
+  };
+}
+
 export const runTriage = internalAction({
   args: {
     runId: v.id("runs"),
@@ -827,6 +851,10 @@ export const runVerify = internalAction({
         internal.triageResults.getInternalByRunId,
         { runId: args.runId },
       );
+      const contract = await ctx.runQuery(
+        internal.reproContracts.getInternalByRunId,
+        { runId: args.runId },
+      );
       const reproPlan = await ctx.runQuery(
         internal.reproPlans.getInternalByRunId,
         { runId: args.runId },
@@ -836,19 +864,19 @@ export const runVerify = internalAction({
         { runId: args.runId },
       );
 
-      if (!triageResult?.artifact || !reproPlan || !reproRun?.artifactContent) {
+      if (
+        !triageResult?.artifact ||
+        !contract ||
+        !reproPlan ||
+        !reproRun?.artifactContent
+      ) {
         throw new Error(
-          `Missing triage, repro plan, or repro run artifact for verification of run ${args.runId}`,
+          `Missing triage, repro contract, repro plan, or repro run artifact for verification of run ${args.runId}`,
         );
       }
 
-      const contract = await storeGeneratedReproContract(
-        ctx,
-        args.runId,
-        run.runId,
-        triageResult.artifact,
-      );
       const plannedCommands = buildPlannedSandboxCommands(reproPlan.commands);
+      const sandboxPolicy = buildVerificationSandboxPolicy(contract);
       const languageHint = normalizeLanguageHint(
         triageResult.artifact.repro_hypothesis.environment_assumptions
           ?.language ?? repo.language,
@@ -888,13 +916,7 @@ export const runVerify = internalAction({
             },
             ...plannedCommands,
           ],
-          policy: {
-            network: contract.sandbox_policy.network,
-            runAsRoot: false,
-            secretsMount: "none",
-            wallClockTimeout: contract.budgets.wall_clock_seconds,
-            maxIterations: contract.budgets.max_iterations,
-          },
+          policy: sandboxPolicy,
         });
 
         rerunResults.push(rerunResult);

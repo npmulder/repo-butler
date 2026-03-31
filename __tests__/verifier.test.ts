@@ -18,6 +18,7 @@ function buildSandboxResult(
     stdoutTail: string;
     network: "disabled" | "enabled";
     uid: number;
+    failureType: "env_setup" | "repro_failure";
   }> = {},
 ) {
   const status = overrides.status ?? "failure";
@@ -27,7 +28,7 @@ function buildSandboxResult(
     status,
     ...(status === "success"
       ? {}
-      : { failureType: "repro_failure" as const }),
+      : { failureType: overrides.failureType ?? ("repro_failure" as const) }),
     sandbox: {
       kind: "docker" as const,
       imageDigest: "sha256:verify",
@@ -245,6 +246,45 @@ describe("verifyReproduction", () => {
 
     expect(verification.verdict).toBe("policy_violation");
     expect(verification.policy_checks.ran_as_root).toBe(true);
+  });
+
+  it("returns env_setup_failed when a verification rerun cannot boot the sandbox", () => {
+    const verification = verifyReproduction(
+      buildContract(),
+      [
+        buildSandboxResult({
+          status: "error",
+          failureType: "env_setup",
+          stderrTail: "docker build failed",
+        }),
+      ],
+      {
+        file_path: "tests/repro-issue-42.test.ts",
+        content: "throw new Error('ParseError')",
+      },
+    );
+
+    expect(verification.verdict).toBe("env_setup_failed");
+    expect(validateVerificationArtifact(verification)).toEqual({ valid: true });
+  });
+
+  it("returns budget_exhausted when verification times out unexpectedly", () => {
+    const verification = verifyReproduction(
+      buildContract(),
+      [
+        buildSandboxResult({
+          status: "timeout",
+          stderrTail: "timed out after 1200 seconds",
+        }),
+      ],
+      {
+        file_path: "tests/repro-issue-42.test.ts",
+        content: "throw new Error('ParseError')",
+      },
+    );
+
+    expect(verification.verdict).toBe("budget_exhausted");
+    expect(validateVerificationArtifact(verification)).toEqual({ valid: true });
   });
 
   it("counts stderr match patterns when the expected text appears in output", () => {

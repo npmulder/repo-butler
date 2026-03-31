@@ -20,6 +20,7 @@ import type * as lib_githubWebhooks from "../lib/githubWebhooks.js";
 import type * as pipeline from "../pipeline.js";
 import type * as repoSettings from "../repoSettings.js";
 import type * as repos from "../repos.js";
+import type * as reproContracts from "../reproContracts.js";
 import type * as reproPlans from "../reproPlans.js";
 import type * as reproRuns from "../reproRuns.js";
 import type * as runs from "../runs.js";
@@ -47,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   pipeline: typeof pipeline;
   repoSettings: typeof repoSettings;
   repos: typeof repos;
+  reproContracts: typeof reproContracts;
   reproPlans: typeof reproPlans;
   reproRuns: typeof reproRuns;
   runs: typeof runs;
