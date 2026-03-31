@@ -18,6 +18,11 @@ import {
   type WebhookStore,
 } from "./lib/githubWebhooks";
 import {
+  AuditEventType,
+  createAuditEvent,
+  toAuditLogMutationArgs,
+} from "../lib/security/audit-logger";
+import {
   isRepoEventTypeEnabled,
   loadNormalizedRepoSettings,
 } from "./repoSettings";
@@ -169,12 +174,31 @@ export const processWebhook = internalMutation({
     dispatch: webhookDispatchValidator,
   }),
   handler: async (ctx, args) => {
-    return await processWebhookDelivery(createWebhookStore(ctx), {
+    const result = await processWebhookDelivery(createWebhookStore(ctx), {
       deliveryId: args.deliveryId,
       event: args.event,
       action: args.action,
       payload: args.payload,
     });
+
+    await ctx.runMutation(
+      internal.auditLogs.log,
+      toAuditLogMutationArgs(
+        createAuditEvent(
+          AuditEventType.WEBHOOK_RECEIVED,
+          "github",
+          { type: "webhook", id: args.deliveryId },
+          {
+            event: args.event,
+            action: args.action,
+            dispatch: result.dispatch,
+            duplicate: result.duplicate,
+          },
+        ),
+      ),
+    );
+
+    return result;
   },
 });
 

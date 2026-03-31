@@ -9,6 +9,12 @@ import {
   verifyActionsCallbackSignature,
 } from "./lib/actionsCallbacks";
 import { verifyWebhookSignature } from "./lib/githubWebhooks";
+import {
+  AuditEventType,
+  createAuditEvent,
+  toAuditLogMutationArgs,
+} from "../lib/security/audit-logger";
+import { buildRateLimitKey } from "../lib/security/rate-limiter";
 
 const http = httpRouter();
 
@@ -98,6 +104,11 @@ function extractActor(payload: unknown) {
   );
 }
 
+function extractClientIp(forwardedForHeader: string | null) {
+  const firstValue = forwardedForHeader?.split(",")[0]?.trim();
+  return firstValue && firstValue.length > 0 ? firstValue : undefined;
+}
+
 if (authKit) {
   authKit.registerRoutes(http);
 }
@@ -111,11 +122,46 @@ http.route({
     const signature = request.headers.get("x-hub-signature-256") ?? "";
     const event = request.headers.get("x-github-event") ?? "";
     const deliveryId = request.headers.get("x-github-delivery") ?? "";
+    const clientIp = extractClientIp(request.headers.get("x-forwarded-for"));
 
     if (!signature || !event || !deliveryId) {
       return new Response("Missing required GitHub webhook headers", {
         status: 400,
       });
+    }
+
+    const webhookResource = { type: "webhook", id: deliveryId };
+    const logAuditEvent = async (
+      type: AuditEventType,
+      actor: string,
+      details: Record<string, unknown> = {},
+    ) => {
+      await ctx.runMutation(
+        internal.auditLogs.log,
+        toAuditLogMutationArgs(
+          createAuditEvent(type, actor, webhookResource, details, {
+            ...(clientIp ? { ip: clientIp } : {}),
+          }),
+        ),
+      );
+    };
+    const webhookRateLimitKey = buildRateLimitKey("webhookIngestion");
+    const webhookRateLimit = await ctx.runMutation(
+      internal.auditLogs.enforceRateLimit,
+      {
+        name: "webhookIngestion",
+        key: webhookRateLimitKey,
+      },
+    );
+
+    if (!webhookRateLimit.allowed) {
+      await logAuditEvent(AuditEventType.RATE_LIMIT_HIT, "system", {
+        event,
+        rateLimit: "webhookIngestion",
+        key: webhookRateLimitKey,
+        resetAt: webhookRateLimit.resetAt,
+      });
+      return new Response("Webhook rate limit exceeded", { status: 429 });
     }
 
     // HTTP actions run on Convex servers, so this secret must be configured
@@ -136,14 +182,24 @@ http.route({
     );
 
     if (!isValid) {
+      await logAuditEvent(AuditEventType.WEBHOOK_REJECTED, "github", {
+        event,
+        reason: "invalid_signature",
+      });
       return new Response("Invalid signature", { status: 401 });
     }
+
+    await logAuditEvent(AuditEventType.WEBHOOK_VERIFIED, "github", { event });
 
     let payload: unknown;
 
     try {
       payload = JSON.parse(bodyText) as unknown;
     } catch {
+      await logAuditEvent(AuditEventType.WEBHOOK_REJECTED, "github", {
+        event,
+        reason: "invalid_json",
+      });
       return new Response("Invalid JSON payload", { status: 400 });
     }
 

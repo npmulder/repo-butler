@@ -434,6 +434,8 @@ export default defineSchema({
 
   verifications: defineTable({
     runId: v.id("runs"),
+    // Optional during rollout while legacy verification rows are still backfilled.
+    repoId: v.optional(v.id("repos")),
     schemaVersion: v.string(),
     verdict: verdictValidator,
     determinism: v.object({
@@ -457,6 +459,7 @@ export default defineSchema({
     createdAt: v.float64(),
   })
     .index("by_run", ["runId"])
+    .index("by_repo_and_verdict_and_created_at", ["repoId", "verdict", "createdAt"])
     .index("by_log_storage_id", ["logStorageId"]),
 
   reports: defineTable({
@@ -472,6 +475,34 @@ export default defineSchema({
     createdAt: v.float64(),
     updatedAt: v.float64(),
   }).index("by_run", ["runId"]),
+
+  auditLogs: defineTable({
+    type: v.string(),
+    timestamp: v.number(),
+    actor: v.string(),
+    resourceType: v.string(),
+    resourceId: v.string(),
+    details: v.any(),
+    severity: v.union(
+      v.literal("info"),
+      v.literal("warning"),
+      v.literal("critical"),
+    ),
+    ip: v.optional(v.string()),
+  })
+    .index("by_timestamp", ["timestamp"])
+    .index("by_type_and_timestamp", ["type", "timestamp"])
+    .index("by_severity_and_timestamp", ["severity", "timestamp"])
+    .index("by_resource_type_and_resource_id_and_timestamp", [
+      "resourceType",
+      "resourceId",
+      "timestamp",
+    ]),
+
+  rateLimitEvents: defineTable({
+    key: v.string(),
+    timestamp: v.number(),
+  }).index("by_key_and_timestamp", ["key", "timestamp"]),
 
   webhookDeliveries: defineTable({
     deliveryId: v.string(),
