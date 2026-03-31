@@ -21,6 +21,7 @@ import type * as lib_githubWebhooks from "../lib/githubWebhooks.js";
 import type * as pipeline from "../pipeline.js";
 import type * as repos from "../repos.js";
 import type * as repoSettings from "../repoSettings.js";
+import type * as runDetail from "../runDetail.js";
 import type * as runs from "../runs.js";
 import type * as triageResults from "../triageResults.js";
 import type * as users from "../users.js";
@@ -46,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   pipeline: typeof pipeline;
   repos: typeof repos;
   repoSettings: typeof repoSettings;
+  runDetail: typeof runDetail;
   runs: typeof runs;
   triageResults: typeof triageResults;
   users: typeof users;

@@ -52,6 +52,8 @@ const stepResultValidator = v.object({
   exitCode: v.int64(),
   stdoutSha256: v.optional(v.string()),
   stderrSha256: v.optional(v.string()),
+  stdoutTail: v.optional(v.string()),
+  stderrTail: v.optional(v.string()),
   durationMs: v.optional(v.int64()),
 });
 

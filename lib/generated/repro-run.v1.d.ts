@@ -19,15 +19,12 @@ export interface ReproRun {
     exit_code: number;
     stdout_sha256?: string;
     stderr_sha256?: string;
+    stdout_tail?: string;
+    stderr_tail?: string;
     duration_ms?: number;
   }[];
   failure_observed?: {
-    kind:
-      | "exception"
-      | "assertion"
-      | "nonzero_exit"
-      | "snapshot_diff"
-      | "timeout";
+    kind: "exception" | "assertion" | "nonzero_exit" | "snapshot_diff" | "timeout";
     match_any?: string[];
     trace_excerpt_sha256?: string;
   };

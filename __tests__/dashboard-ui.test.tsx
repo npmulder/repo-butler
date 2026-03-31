@@ -1,6 +1,6 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("convex/react", () => ({
   useMutation: vi.fn(),
@@ -140,6 +140,10 @@ function buildTriage(
 }
 
 describe("dashboard UI", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   beforeEach(() => {
     mockedUseMutation.mockReset();
     mockedUsePathname.mockReset();
@@ -249,6 +253,26 @@ describe("dashboard UI", () => {
     ).toBeInTheDocument();
   });
 
+  it("links triage cards to the run detail page with a preserved dashboard back link", () => {
+    mockedUseSearchParams.mockReturnValue(
+      new URLSearchParams("status=reproducing&q=parser") as never,
+    );
+
+    render(
+      <TriageCard
+        issue={buildIssue()}
+        repo={{ fullName: "acme/repo", name: "repo", owner: "acme" }}
+        run={buildRun({ status: "awaiting_approval" })}
+        triage={buildTriage()}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "Run details" })).toHaveAttribute(
+      "href",
+      "/runs/run_1?back=%2Fdashboard%3Fstatus%3Dreproducing%26q%3Dparser",
+    );
+  });
+
   it("renders the dashboard page with mocked Convex data", () => {
     const user = buildUser();
     const repo = buildRepo();
@@ -259,39 +283,31 @@ describe("dashboard UI", () => {
     mockedUseSearchParams.mockReturnValue(
       new URLSearchParams("q=parser") as never,
     );
-    mockedUseQuery.mockImplementation(((reference: unknown) => {
-      if (reference === api.users.getCurrentUser) {
-        return user;
-      }
-
-      if (reference === api.dashboard.getRepoList) {
-        return [repo];
-      }
-
-      if (reference === api.dashboard.getIssueFeed) {
-        return [
+    mockedUseQuery
+      .mockReturnValueOnce(user as never)
+      .mockReturnValueOnce([repo] as never)
+      .mockReturnValueOnce(user as never)
+      .mockReturnValueOnce([repo] as never)
+      .mockReturnValueOnce(
+        [
           {
             issue,
             repo: { fullName: repo.fullName, name: repo.name, owner: repo.owner },
             run,
             triage,
           },
-        ];
-      }
-
-      if (reference === api.dashboard.getDashboardStats) {
-        return {
+        ] as never,
+      )
+      .mockReturnValueOnce(
+        {
           activeSandbox: 0,
           awaitingApproval: 1,
           completed: 0,
           failed: 0,
           total24h: 1,
           triaged: 1,
-        };
-      }
-
-      return undefined;
-    }) as typeof useQuery);
+        } as never,
+      );
 
     render(<DashboardPage />);
 

@@ -46,7 +46,11 @@ export function Sidebar() {
       <nav className="space-y-2">
         {DASHBOARD_NAV_ITEMS.map((item) => {
           const Icon = icons[item.title];
-          const active = pathname === item.href;
+          const active =
+            pathname === item.href ||
+            (item.href === "/dashboard/runs" && pathname.startsWith("/runs/")) ||
+            (item.href === "/dashboard/settings" &&
+              pathname.startsWith("/settings/"));
 
           return (
             <Link
