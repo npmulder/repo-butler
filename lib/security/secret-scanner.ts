@@ -28,7 +28,7 @@ export const SECRET_PATTERNS: ReadonlyArray<{
   {
     type: "Generic secret assignment",
     pattern:
-      /(?:secret|password|token|key|api[_-]?key)\s*[:=]\s*["'][A-Za-z0-9/+_.=-]{8,}["']/gi,
+      /(?<![A-Za-z0-9_])(?:secret|password|token|key|api[_-]?key)(?![A-Za-z0-9_])\s*[:=]\s*["'][A-Za-z0-9/+_.=-]{8,}["']/gi,
   },
 ];
 

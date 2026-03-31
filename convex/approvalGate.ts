@@ -343,13 +343,17 @@ async function applyApproval(
 
   await ctx.db.patch(runId, outcome.patch);
 
+  const approvalAuditTypeByAction: Record<ApprovalAction, AuditEventType> = {
+    approve: AuditEventType.APPROVAL_GRANTED,
+    reject: AuditEventType.APPROVAL_DENIED,
+    request_info: AuditEventType.APPROVAL_INFO_REQUESTED,
+  };
+
   await ctx.runMutation(
     internal.auditLogs.log,
     toAuditLogMutationArgs(
       createAuditEvent(
-        action === "approve"
-          ? AuditEventType.APPROVAL_GRANTED
-          : AuditEventType.APPROVAL_DENIED,
+        approvalAuditTypeByAction[action],
         approvedBy,
         { type: "run", id: runId },
         { action },

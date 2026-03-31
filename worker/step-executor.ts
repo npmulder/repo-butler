@@ -23,14 +23,18 @@ export async function executeStep(
       timeout: step.timeout ?? 300,
     },
   );
-  const source = `step:${step.name}`;
-  const scan = scanForSecrets(`${stdout}\n${stderr}`, source);
+  const stdoutScan = scanForSecrets(stdout, `step:${step.name}:stdout`);
+  const stderrScan = scanForSecrets(stderr, `step:${step.name}:stderr`);
+  const scan = {
+    clean: stdoutScan.clean && stderrScan.clean,
+    findings: [...stdoutScan.findings, ...stderrScan.findings],
+  };
   const sanitizedStdout = redactLoggedSecrets(redactScannedSecrets(stdout));
   const sanitizedStderr = redactLoggedSecrets(redactScannedSecrets(stderr));
 
   if (!scan.clean) {
     console.warn("[security] Secret-like material detected in sandbox output", {
-      source,
+      step: step.name,
       findings: scan.findings,
     });
   }

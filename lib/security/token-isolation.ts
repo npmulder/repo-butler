@@ -27,7 +27,7 @@ export const TOKEN_PERMISSIONS: Record<string, TokenPermission> = {
     allowedContexts: [TokenContext.CONTROL_PLANE],
     permissions: ["worker authentication"],
   },
-  WEBHOOK_SECRET: {
+  GITHUB_APP_WEBHOOK_SECRET: {
     allowedContexts: [TokenContext.CONTROL_PLANE],
     permissions: ["webhook verification"],
   },

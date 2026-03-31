@@ -106,6 +106,15 @@ describe("secret scanning", () => {
     expect(findingTypes).toContain("Generic secret assignment");
   });
 
+  it("does not match keywords embedded inside longer identifiers", () => {
+    const content = 'monkey="harmlessvalue"\nturnkey="still-fine"';
+    const result = scanForSecrets(content, "unit:test");
+
+    expect(result.clean).toBe(true);
+    expect(result.findings).toEqual([]);
+    expect(redactSecrets(content)).toBe(content);
+  });
+
   it("redacts discovered secrets", () => {
     const input = [
       `ghp_${"e".repeat(36)}`,
@@ -130,6 +139,8 @@ describe("audit logging", () => {
   it("redacts sensitive detail keys recursively", () => {
     const redacted = redactSensitiveFields({
       apiToken: "secret-token",
+      key: "webhookIngestion:global",
+      rateLimitKey: "triagePerRepo:repo_123",
       nested: {
         webhookSecret: "value",
         allowed: "safe",
@@ -139,6 +150,8 @@ describe("audit logging", () => {
 
     expect(redacted).toEqual({
       apiToken: "[REDACTED]",
+      key: "webhookIngestion:global",
+      rateLimitKey: "triagePerRepo:repo_123",
       nested: {
         webhookSecret: "[REDACTED]",
         allowed: "safe",

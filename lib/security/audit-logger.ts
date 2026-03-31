@@ -7,6 +7,7 @@ export enum AuditEventType {
   APPROVAL_REQUESTED = "pipeline.approval_requested",
   APPROVAL_GRANTED = "pipeline.approval_granted",
   APPROVAL_DENIED = "pipeline.approval_denied",
+  APPROVAL_INFO_REQUESTED = "pipeline.approval_info_requested",
   REPRO_DISPATCHED = "pipeline.repro_dispatched",
   REPRO_COMPLETED = "pipeline.repro_completed",
   VERIFY_COMPLETED = "pipeline.verify_completed",
@@ -37,7 +38,25 @@ export type AuditEvent = {
   ip?: string;
 };
 
-const SENSITIVE_KEYS = ["token", "secret", "key", "password", "authorization"];
+const SENSITIVE_KEY_SUBSTRINGS = ["token", "secret", "password", "authorization"];
+const KEY_QUALIFIERS = new Set([
+  "access",
+  "api",
+  "app",
+  "auth",
+  "authorization",
+  "deploy",
+  "encryption",
+  "github",
+  "installation",
+  "llm",
+  "private",
+  "public",
+  "secret",
+  "signing",
+  "webhook",
+  "worker",
+]);
 const CRITICAL_EVENTS = new Set<AuditEventType>([
   AuditEventType.SECRET_DETECTED,
   AuditEventType.SANDBOX_ESCAPE_ATTEMPT,
@@ -60,13 +79,39 @@ function redactSensitiveValue(value: unknown): unknown {
   return redactSensitiveFields(value);
 }
 
+function normalizeFieldName(key: string) {
+  return key
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase();
+}
+
+function isSensitiveFieldName(key: string) {
+  const normalized = normalizeFieldName(key);
+
+  if (
+    SENSITIVE_KEY_SUBSTRINGS.some((sensitiveKey) => normalized.includes(sensitiveKey))
+  ) {
+    return true;
+  }
+
+  const segments = normalized.split(/[^a-z0-9]+/).filter(Boolean);
+  const segmentCount = segments.length;
+
+  if (segmentCount < 2 || segments[segmentCount - 1] !== "key") {
+    return false;
+  }
+
+  return KEY_QUALIFIERS.has(segments[segmentCount - 2]!);
+}
+
 export function redactSensitiveFields(
   details: Record<string, unknown>,
 ): Record<string, unknown> {
   const redacted: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(details)) {
-    if (SENSITIVE_KEYS.some((sensitiveKey) => key.toLowerCase().includes(sensitiveKey))) {
+    if (isSensitiveFieldName(key)) {
       redacted[key] = "[REDACTED]";
       continue;
     }

@@ -6,6 +6,7 @@ import {
   checkRateLimit,
   type RateLimitStore,
 } from "../lib/security/rate-limiter";
+import { redactSensitiveFields } from "../lib/security/audit-logger";
 
 const severityValidator = v.union(
   v.literal("info"),
@@ -32,7 +33,22 @@ export const log = internalMutation({
     ip: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("auditLogs", args);
+    const details = Array.isArray(args.details)
+      ? args.details.map((item) =>
+          typeof item === "object" && item !== null && !Array.isArray(item)
+            ? redactSensitiveFields(item as Record<string, unknown>)
+            : item,
+        )
+      : typeof args.details === "object" &&
+          args.details !== null &&
+          !Array.isArray(args.details)
+        ? redactSensitiveFields(args.details as Record<string, unknown>)
+        : args.details;
+
+    return await ctx.db.insert("auditLogs", {
+      ...args,
+      details,
+    });
   },
 });
 
