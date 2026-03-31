@@ -101,6 +101,42 @@ const reproRunEnvironmentStrategyValidator = v.object({
   imageUsed: v.optional(v.string()),
 });
 
+const dispatchStageValidator = v.union(
+  v.literal("reproduce"),
+  v.literal("verify"),
+);
+
+const dispatchStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("dispatched"),
+  v.literal("completed"),
+  v.literal("failed"),
+);
+
+const dispatchCommandValidator = v.object({
+  name: v.string(),
+  cmd: v.string(),
+  cwd: v.optional(v.string()),
+  timeout: v.optional(v.number()),
+});
+
+const dispatchInputsValidator = v.object({
+  targetRepo: v.string(),
+  targetRef: v.string(),
+  targetSha: v.string(),
+  artifactPath: v.string(),
+  artifactContent: v.string(),
+  commands: v.array(dispatchCommandValidator),
+  callbackUrl: v.string(),
+  policyNetwork: v.union(v.literal("disabled"), v.literal("enabled")),
+  policyTimeout: v.number(),
+  environmentStrategy: v.optional(environmentStrategyNameValidator),
+  languageHint: v.optional(v.string()),
+  runtimeHint: v.optional(v.string()),
+  reruns: v.optional(v.number()),
+  iteration: v.optional(v.number()),
+});
+
 export default defineSchema({
   users: defineTable({
     workosId: v.string(),
@@ -257,6 +293,25 @@ export default defineSchema({
     .index("by_repo", ["repoId", "startedAt"])
     .index("by_status", ["status", "startedAt"])
     .index("by_created", ["startedAt"]),
+
+  dispatches: defineTable({
+    runId: v.id("runs"),
+    stage: dispatchStageValidator,
+    workflowFile: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+    ref: v.string(),
+    inputs: dispatchInputsValidator,
+    status: dispatchStatusValidator,
+    actionsRunId: v.optional(v.number()),
+    githubRunAttempt: v.optional(v.number()),
+    result: v.optional(v.any()),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_and_stage", ["runId", "stage"]),
 
   triageResults: defineTable({
     runId: v.id("runs"),

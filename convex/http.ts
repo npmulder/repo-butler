@@ -1,8 +1,13 @@
 import { httpRouter } from "convex/server";
 
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { httpAction } from "./_generated/server";
 import { authKit } from "./auth";
+import {
+  ACTIONS_CALLBACK_SIGNATURE_HEADER,
+  verifyActionsCallbackSignature,
+} from "./lib/actionsCallbacks";
 import { verifyWebhookSignature } from "./lib/githubWebhooks";
 
 const http = httpRouter();
@@ -72,6 +77,14 @@ function extractCommentAuthorAssociation(payload: unknown) {
   }
 
   return readString(readRecord(payload, "comment")?.author_association);
+}
+
+function extractDispatchId(payload: unknown) {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  return readString(payload.dispatch_id);
 }
 
 function extractActor(payload: unknown) {
@@ -189,6 +202,69 @@ http.route({
       });
     } catch (error) {
       console.error("GitHub webhook processing error:", error);
+      return new Response("Processing error", { status: 500 });
+    }
+  }),
+});
+
+http.route({
+  path: "/actions/callback",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const rawBody = new Uint8Array(await request.arrayBuffer());
+    const bodyText = new TextDecoder().decode(rawBody);
+    const signature =
+      request.headers.get(ACTIONS_CALLBACK_SIGNATURE_HEADER) ?? "";
+
+    if (!signature) {
+      return new Response("Missing callback signature", { status: 400 });
+    }
+
+    let payload: unknown;
+
+    try {
+      payload = JSON.parse(bodyText) as unknown;
+    } catch {
+      return new Response("Invalid JSON payload", { status: 400 });
+    }
+
+    const dispatchId = extractDispatchId(payload);
+
+    if (!dispatchId) {
+      return new Response("Missing dispatch_id", { status: 400 });
+    }
+
+    let isValid = false;
+    const actionsCallbackSecret = process.env.ACTIONS_CALLBACK_SECRET?.trim();
+
+    if (!actionsCallbackSecret) {
+      return new Response("Callback secret is not configured", { status: 500 });
+    }
+
+    try {
+      isValid = await verifyActionsCallbackSignature({
+        rawBody,
+        signature,
+        dispatchId,
+        masterSecret: actionsCallbackSecret,
+      });
+    } catch (error) {
+      console.error("Actions callback verification error:", error);
+      return new Response("Callback secret is not configured", { status: 500 });
+    }
+
+    if (!isValid) {
+      return new Response("Invalid signature", { status: 401 });
+    }
+
+    try {
+      await ctx.runMutation(internal.dispatcher.handleCallback, {
+        dispatchId: dispatchId as Id<"dispatches">,
+        result: payload,
+      });
+      return new Response("OK", { status: 200 });
+    } catch (error) {
+      console.error("Actions callback processing error:", error);
       return new Response("Processing error", { status: 500 });
     }
   }),

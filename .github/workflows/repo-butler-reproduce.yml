@@ -1,0 +1,100 @@
+name: Repo Butler - Reproduce
+
+on:
+  workflow_dispatch:
+    inputs:
+      dispatch_id:
+        description: Repo Butler dispatch ID
+        required: true
+        type: string
+      run_id:
+        description: Repo Butler run ID
+        required: true
+        type: string
+      target_repo:
+        description: Repository to clone (owner/name)
+        required: true
+        type: string
+      target_ref:
+        description: Branch or ref to clone before checking out the target SHA
+        required: true
+        type: string
+      target_sha:
+        description: Commit SHA to checkout
+        required: true
+        type: string
+      artifact_path:
+        description: Repository-relative reproduction artifact path
+        required: true
+        type: string
+      artifact_content_b64:
+        description: Base64-encoded reproduction artifact content
+        required: true
+        type: string
+      commands_json:
+        description: JSON array of sandbox commands to execute
+        required: true
+        type: string
+      callback_url:
+        description: Convex callback URL
+        required: true
+        type: string
+      callback_secret:
+        description: Derived HMAC secret for callback signing
+        required: true
+        type: string
+      environment_strategy:
+        description: Preferred sandbox environment strategy
+        required: false
+        type: string
+      language_hint:
+        description: Optional language hint for environment detection
+        required: false
+        type: string
+      runtime_hint:
+        description: Optional runtime hint for environment detection
+        required: false
+        type: string
+      policy_network:
+        description: Network policy (disabled or enabled)
+        required: true
+        default: disabled
+        type: string
+      policy_timeout:
+        description: Wall clock timeout in seconds
+        required: true
+        default: "1200"
+        type: string
+      iteration:
+        description: Current reproduction iteration number
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout workflow repo
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run reproduction sandbox
+        run: pnpm exec tsx worker/actions-entrypoint.ts reproduce

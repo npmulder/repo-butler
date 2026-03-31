@@ -12,6 +12,16 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { internalAction, type ActionCtx } from "./_generated/server";
 import {
+  REPRODUCE_WORKFLOW_FILE,
+  VERIFY_WORKFLOW_FILE,
+  type StoredDispatchInput,
+  buildWorkflowDispatchInputs,
+  dispatchWorkflow,
+  getActionsCallbackUrl,
+  isActionsDispatchEnabled,
+  resolveWorkflowDispatchTarget,
+} from "../lib/actions-dispatcher";
+import {
   DEFAULT_MAX_TOKENS,
   MODELS,
   getAnthropicClient,
@@ -69,6 +79,7 @@ import {
   verificationArtifactToMutationArgs,
   verifyReproduction,
 } from "../lib/verification";
+import type { SandboxResult } from "../worker/types";
 import { normalizeStrategy } from "../worker/env-strategy";
 import {
   postTriageReport,
@@ -527,6 +538,221 @@ function buildPlannedSandboxCommands(
   }));
 }
 
+async function loadRepoInstallation(
+  ctx: ActionCtx,
+  repo: Doc<"repos">,
+) {
+  const installation = await ctx.runQuery(internal.githubInstallations.getById, {
+    installationId: repo.installationId,
+  });
+
+  if (!installation) {
+    throw new Error(
+      `GitHub installation ${repo.installationId} not found for repo ${repo.fullName}`,
+    );
+  }
+
+  return installation;
+}
+
+function reproRunDocToSandboxResult(
+  runIdentifier: string,
+  reproRun: Doc<"reproRuns">,
+): SandboxResult {
+  const status =
+    reproRun.failureObserved?.kind === "timeout"
+      ? "timeout"
+      : reproRun.failureType === "env_setup"
+        ? "error"
+        : reproRun.steps.some((step) => Number(step.exitCode) !== 0)
+          ? "failure"
+          : "success";
+
+  return {
+    runId: runIdentifier,
+    status,
+    ...(reproRun.failureType ? { failureType: reproRun.failureType } : {}),
+    sandbox: {
+      kind: "docker",
+      imageDigest: reproRun.sandbox.imageDigest ?? "unknown",
+      network: reproRun.sandbox.network as SandboxResult["sandbox"]["network"],
+      uid: Number(reproRun.sandbox.uid ?? BigInt(1000)),
+    },
+    steps: reproRun.steps.map((step) => ({
+      name: step.name,
+      cmd: step.cmd,
+      exitCode: Number(step.exitCode),
+      stdoutSha256: step.stdoutSha256 ?? "",
+      stderrSha256: step.stderrSha256 ?? "",
+      ...(step.stdoutTail ? { stdoutTail: step.stdoutTail } : {}),
+      ...(step.stderrTail ? { stderrTail: step.stderrTail } : {}),
+      durationMs: Number(step.durationMs ?? BigInt(0)),
+    })),
+    ...(reproRun.failureObserved
+        ? {
+            failureObserved: {
+              kind:
+                reproRun.failureObserved.kind as NonNullable<
+                  SandboxResult["failureObserved"]
+                >["kind"],
+              ...(reproRun.failureObserved.matchAny
+                ? { matchAny: reproRun.failureObserved.matchAny }
+                : {}),
+              ...(reproRun.failureObserved.traceExcerptSha256
+                ? {
+                    traceExcerptSha256:
+                      reproRun.failureObserved.traceExcerptSha256,
+                  }
+                : {}),
+            },
+          }
+      : {}),
+    totalDurationMs: Number(reproRun.durationMs),
+  };
+}
+
+async function loadPreviousReproducerFeedback(
+  ctx: ActionCtx,
+  runId: Id<"runs">,
+  runIdentifier: string,
+) {
+  const reproRun = await ctx.runQuery(internal.reproRuns.getInternalByRunId, {
+    runId,
+  });
+
+  return reproRun
+    ? buildReproducerFeedback(reproRunDocToSandboxResult(runIdentifier, reproRun))
+    : undefined;
+}
+
+async function requestAndStoreReproductionAttempt(input: {
+  ctx: ActionCtx;
+  runId: Id<"runs">;
+  runIdentifier: string;
+  repo: Doc<"repos">;
+  triageArtifact: TriageArtifact;
+  baseRevision: {
+    ref: string;
+    sha: string;
+  };
+  iteration: number;
+  languageHint?: string;
+  previousFeedback?: ReturnType<typeof buildReproducerFeedback>;
+}) {
+  const response = await requestReproductionAttempt(
+    buildReproducerUserPrompt({
+      triage: input.triageArtifact,
+      repoContext: {
+        languages: input.repo.language
+          ? [input.repo.language]
+          : input.languageHint
+            ? [input.languageHint]
+            : [],
+        defaultBranch: input.repo.defaultBranch,
+      },
+      iteration: input.iteration,
+      ...(input.previousFeedback
+        ? { previousFeedback: input.previousFeedback }
+        : {}),
+    }),
+  );
+
+  const planToolOutput = extractReproPlanFromResponse(response);
+  const artifactOutput = extractReproArtifactFromResponse(response);
+
+  if (!planToolOutput) {
+    throw new Error(
+      `Claude did not return ${REPRO_PLAN_TOOL_NAME}. Stop reason: ${response.stop_reason}; content blocks: ${response.content
+        .map((block) => block.type)
+        .join(", ")}`,
+    );
+  }
+
+  if (!artifactOutput) {
+    throw new Error(
+      `Claude did not return ${REPRO_ARTIFACT_TOOL_NAME}. Stop reason: ${response.stop_reason}; content blocks: ${response.content
+        .map((block) => block.type)
+        .join(", ")}`,
+    );
+  }
+
+  const planArtifact = buildReproPlanArtifact({
+    runId: input.runIdentifier,
+    toolOutput: planToolOutput,
+    defaultBaseRevision: input.baseRevision,
+  });
+  const validation = validateReproPlanArtifact(planArtifact);
+
+  if (!validation.valid) {
+    throw new Error(
+      `Repro plan artifact failed schema validation: ${validation.errors.join("; ")}`,
+    );
+  }
+
+  await input.ctx.runMutation(
+    internal.artifacts.storeReproPlanFromAction,
+    reproPlanArtifactToMutationArgs(input.runId, planArtifact),
+  );
+
+  return {
+    planArtifact,
+    artifactOutput,
+  };
+}
+
+async function dispatchSandboxWorkflow(input: {
+  ctx: ActionCtx;
+  runId: Id<"runs">;
+  runIdentifier: string;
+  repo: Doc<"repos">;
+  stage: "reproduce" | "verify";
+  workflowFile: string;
+  storedInputs: StoredDispatchInput;
+}) {
+  const installation = await loadRepoInstallation(input.ctx, input.repo);
+  const dispatchTarget = resolveWorkflowDispatchTarget({
+    owner: input.repo.owner,
+    repo: input.repo.name,
+    ref: input.repo.defaultBranch,
+  });
+  const dispatchId = await input.ctx.runMutation(internal.dispatcher.recordDispatch, {
+    runId: input.runId,
+    stage: input.stage,
+    workflowFile: input.workflowFile,
+    owner: dispatchTarget.owner,
+    repo: dispatchTarget.repo,
+    ref: dispatchTarget.ref,
+    inputs: input.storedInputs,
+  });
+
+  try {
+    const workflowInputs = await buildWorkflowDispatchInputs({
+      dispatchId,
+      runId: input.runIdentifier,
+      stored: input.storedInputs,
+    });
+
+    await dispatchWorkflow({
+      installationId: Number(installation.installationId),
+      owner: dispatchTarget.owner,
+      repo: dispatchTarget.repo,
+      workflowFile: input.workflowFile,
+      ref: dispatchTarget.ref,
+      inputs: workflowInputs,
+    });
+
+    await input.ctx.runMutation(internal.dispatcher.markDispatched, {
+      dispatchId,
+    });
+  } catch (error) {
+    await input.ctx.runMutation(internal.dispatcher.markDispatchFailed, {
+      dispatchId,
+      errorMessage: formatErrorMessageLegacy(error),
+    });
+    throw error;
+  }
+}
+
 async function storeGeneratedReproContract(
   ctx: ActionCtx,
   runId: Id<"runs">,
@@ -685,6 +911,7 @@ export const runTriage = internalAction({
 export const runReproduce = internalAction({
   args: {
     runId: v.id("runs"),
+    iteration: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -724,6 +951,56 @@ export const runReproduce = internalAction({
         triageResult.artifact.repro_hypothesis.environment_assumptions?.runtime,
       );
 
+      if (isActionsDispatchEnabled()) {
+        const iteration = Math.max(1, Math.trunc(args.iteration ?? 1));
+        const previousFeedback =
+          iteration > 1
+            ? await loadPreviousReproducerFeedback(ctx, args.runId, run.runId)
+            : undefined;
+        const { planArtifact, artifactOutput } =
+          await requestAndStoreReproductionAttempt({
+            ctx,
+            runId: args.runId,
+            runIdentifier: run.runId,
+            repo,
+            triageArtifact: triageResult.artifact,
+            baseRevision,
+            iteration,
+            ...(languageHint ? { languageHint } : {}),
+            ...(previousFeedback ? { previousFeedback } : {}),
+          });
+        const plannedCommands = buildPlannedSandboxCommands(planArtifact.commands);
+
+        await dispatchSandboxWorkflow({
+          ctx,
+          runId: args.runId,
+          runIdentifier: run.runId,
+          repo,
+          stage: "reproduce",
+          workflowFile: REPRODUCE_WORKFLOW_FILE,
+          storedInputs: {
+            targetRepo: `${repo.owner}/${repo.name}`,
+            targetRef: normalizeCloneRef(
+              planArtifact.base_revision.ref,
+              repo.defaultBranch,
+            ),
+            targetSha: planArtifact.base_revision.sha,
+            artifactPath: planArtifact.artifact.path,
+            artifactContent: artifactOutput.content,
+            commands: plannedCommands,
+            callbackUrl: getActionsCallbackUrl(),
+            policyNetwork: "disabled",
+            policyTimeout: 1200,
+            environmentStrategy: planArtifact.environment_strategy.preferred,
+            ...(languageHint ? { languageHint } : {}),
+            ...(runtimeHint ? { runtimeHint } : {}),
+            iteration,
+          },
+        });
+
+        return null;
+      }
+
       let planArtifact:
         | ReturnType<typeof buildReproPlanArtifact>
         | null = null;
@@ -739,66 +1016,23 @@ export const runReproduce = internalAction({
         iteration <= MAX_REPRODUCTION_ITERATIONS;
         iteration += 1
       ) {
-        const response = await requestReproductionAttempt(
-          buildReproducerUserPrompt({
-            triage: triageResult.artifact,
-            repoContext: {
-              languages: repo.language
-                ? [repo.language]
-                : languageHint
-                  ? [languageHint]
-                  : [],
-              defaultBranch: repo.defaultBranch,
-            },
-            iteration,
-            ...(previousFeedback ? { previousFeedback } : {}),
-          }),
-        );
+        const {
+          planArtifact: nextPlanArtifact,
+          artifactOutput: nextArtifactOutput,
+        } = await requestAndStoreReproductionAttempt({
+          ctx,
+          runId: args.runId,
+          runIdentifier: run.runId,
+          repo,
+          triageArtifact: triageResult.artifact,
+          baseRevision,
+          iteration,
+          ...(languageHint ? { languageHint } : {}),
+          ...(previousFeedback ? { previousFeedback } : {}),
+        });
 
-        const nextPlanToolOutput = extractReproPlanFromResponse(response);
-
-        if (nextPlanToolOutput) {
-          const nextPlanArtifact = buildReproPlanArtifact({
-            runId: run.runId,
-            toolOutput: nextPlanToolOutput,
-            defaultBaseRevision: baseRevision,
-          });
-          const validation = validateReproPlanArtifact(nextPlanArtifact);
-
-          if (!validation.valid) {
-            throw new Error(
-              `Repro plan artifact failed schema validation: ${validation.errors.join("; ")}`,
-            );
-          }
-
-          planArtifact = nextPlanArtifact;
-          await ctx.runMutation(
-            internal.artifacts.storeReproPlanFromAction,
-            reproPlanArtifactToMutationArgs(args.runId, nextPlanArtifact),
-          );
-        }
-
-        const nextArtifactOutput = extractReproArtifactFromResponse(response);
-
-        if (nextArtifactOutput) {
-          artifactOutput = nextArtifactOutput;
-        }
-
-        if (!planArtifact) {
-          throw new Error(
-            `Claude did not return ${REPRO_PLAN_TOOL_NAME}. Stop reason: ${response.stop_reason}; content blocks: ${response.content
-              .map((block) => block.type)
-              .join(", ")}`,
-          );
-        }
-
-        if (!artifactOutput) {
-          throw new Error(
-            `Claude did not return ${REPRO_ARTIFACT_TOOL_NAME}. Stop reason: ${response.stop_reason}; content blocks: ${response.content
-              .map((block) => block.type)
-              .join(", ")}`,
-          );
-        }
+        planArtifact = nextPlanArtifact;
+        artifactOutput = nextArtifactOutput;
 
         const plannedCommands = buildPlannedSandboxCommands(planArtifact.commands);
         const sandboxResult = await executeSandbox({
@@ -949,6 +1183,40 @@ export const runVerify = internalAction({
       const runtimeHint = normalizeRuntimeHint(
         triageResult.artifact.repro_hypothesis.environment_assumptions?.runtime,
       );
+
+      if (isActionsDispatchEnabled()) {
+        await dispatchSandboxWorkflow({
+          ctx,
+          runId: args.runId,
+          runIdentifier: run.runId,
+          repo,
+          stage: "verify",
+          workflowFile: VERIFY_WORKFLOW_FILE,
+          storedInputs: {
+            targetRepo: `${repo.owner}/${repo.name}`,
+            targetRef: normalizeCloneRef(
+              reproPlan.baseRevision.ref,
+              repo.defaultBranch,
+            ),
+            targetSha: reproPlan.baseRevision.sha,
+            artifactPath: reproPlan.artifact.path,
+            artifactContent: reproRun.artifactContent,
+            commands: plannedCommands,
+            callbackUrl: getActionsCallbackUrl(),
+            policyNetwork: sandboxPolicy.network,
+            policyTimeout: sandboxPolicy.wallClockTimeout,
+            environmentStrategy:
+              normalizeStrategy(reproPlan.environmentStrategy.preferred) ??
+              "bootstrap",
+            ...(languageHint ? { languageHint } : {}),
+            ...(runtimeHint ? { runtimeHint } : {}),
+            reruns: Number(contract.acceptance.must_be_deterministic.reruns),
+          },
+        });
+
+        return null;
+      }
+
       const rerunResults = [];
 
       for (

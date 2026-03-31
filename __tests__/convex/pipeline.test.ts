@@ -46,6 +46,14 @@ const githubState = vi.hoisted(() => ({
   removeLabel: vi.fn(),
 }));
 
+const actionsDispatcherState = vi.hoisted(() => ({
+  buildWorkflowDispatchInputs: vi.fn(),
+  dispatchWorkflow: vi.fn(),
+  enabled: false,
+  getActionsCallbackUrl: vi.fn(),
+  resolveWorkflowDispatchTarget: vi.fn(),
+}));
+
 vi.mock("@anthropic-ai/sdk", () => {
   return {
     APIError: anthropicState.MockAPIError,
@@ -92,6 +100,18 @@ vi.mock("@/lib/githubApp", () => {
         },
       },
     })),
+  };
+});
+
+vi.mock("@/lib/actions-dispatcher", () => {
+  return {
+    REPRODUCE_WORKFLOW_FILE: "repo-butler-reproduce.yml",
+    VERIFY_WORKFLOW_FILE: "repo-butler-verify.yml",
+    buildWorkflowDispatchInputs: actionsDispatcherState.buildWorkflowDispatchInputs,
+    dispatchWorkflow: actionsDispatcherState.dispatchWorkflow,
+    getActionsCallbackUrl: actionsDispatcherState.getActionsCallbackUrl,
+    isActionsDispatchEnabled: () => actionsDispatcherState.enabled,
+    resolveWorkflowDispatchTarget: actionsDispatcherState.resolveWorkflowDispatchTarget,
   };
 });
 
@@ -418,6 +438,36 @@ beforeEach(() => {
   });
   githubState.removeLabel.mockReset();
   githubState.removeLabel.mockResolvedValue({ data: {} });
+  actionsDispatcherState.buildWorkflowDispatchInputs.mockReset();
+  actionsDispatcherState.buildWorkflowDispatchInputs.mockResolvedValue({
+    dispatch_id: "dispatch_123",
+    run_id: "run_pipeline",
+    target_repo: "repo-butler/example",
+    target_ref: "main",
+    target_sha: "deadbee1234567890deadbee1234567890deadb",
+    artifact_path: "tests/repro-issue-42.test.ts",
+    artifact_content_b64: "Y29udGVudA==",
+    commands_json: '[{"name":"run_test","cmd":"pnpm test"}]',
+    callback_url: "https://example.convex.site/actions/callback",
+    callback_secret: "secret",
+    policy_network: "disabled",
+    policy_timeout: "1200",
+  });
+  actionsDispatcherState.dispatchWorkflow.mockReset();
+  actionsDispatcherState.dispatchWorkflow.mockResolvedValue({ dispatched: true });
+  actionsDispatcherState.enabled = false;
+  actionsDispatcherState.getActionsCallbackUrl.mockReset();
+  actionsDispatcherState.getActionsCallbackUrl.mockReturnValue(
+    "https://example.convex.site/actions/callback",
+  );
+  actionsDispatcherState.resolveWorkflowDispatchTarget.mockReset();
+  actionsDispatcherState.resolveWorkflowDispatchTarget.mockImplementation(
+    ({ owner, repo, ref }: { owner: string; repo: string; ref: string }) => ({
+      owner,
+      repo,
+      ref,
+    }),
+  );
   vi.useRealTimers();
 });
 
@@ -656,6 +706,43 @@ describe("pipeline.runTriage", () => {
 });
 
 describe("pipeline.runReproduce", () => {
+  it("dispatches the reproduction workflow instead of calling the sandbox worker when Actions mode is enabled", async () => {
+    actionsDispatcherState.enabled = true;
+    anthropicState.create.mockResolvedValueOnce(buildReproClaudeResponse());
+    const { t, runId } = await setupPipelineFixture();
+    await seedTriageResult(t, runId);
+
+    await t.action(internal.pipeline.runReproduce, {
+      runId,
+      iteration: 1,
+    });
+
+    const result = await t.run(async (ctx) => {
+      return {
+        run: await ctx.db.get(runId),
+        dispatches: await ctx.db
+          .query("dispatches")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .collect(),
+      };
+    });
+
+    expect(actionsDispatcherState.dispatchWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflowFile: "repo-butler-reproduce.yml",
+      }),
+    );
+    expect(sandboxState.execute).not.toHaveBeenCalled();
+    expect(result.run).toMatchObject({
+      status: "reproducing",
+    });
+    expect(result.dispatches).toHaveLength(1);
+    expect(result.dispatches[0]).toMatchObject({
+      stage: "reproduce",
+      status: "dispatched",
+    });
+  });
+
   it("refines after runtime feedback and completes when the expected failure appears", async () => {
     anthropicState.create
       .mockResolvedValueOnce(buildReproClaudeResponse())
@@ -779,6 +866,75 @@ describe("pipeline.runReproduce", () => {
 });
 
 describe("pipeline.runVerify", () => {
+  it("dispatches the verification workflow instead of calling the sandbox worker when Actions mode is enabled", async () => {
+    actionsDispatcherState.enabled = true;
+    const { t, runId } = await setupPipelineFixture();
+    await seedTriageResult(t, runId);
+
+    const planArtifact = buildReproPlanArtifact({
+      runId: "run_pipeline",
+      toolOutput: buildReproPlanToolOutput(),
+      defaultBaseRevision: {
+        ref: "refs/heads/main",
+        sha: "deadbee1234567890deadbee1234567890deadb",
+      },
+    });
+    const reproRunArtifact = buildReproRunArtifact({
+      runId: "run_pipeline",
+      iteration: 1,
+      sandboxResult: buildSandboxResult({
+        stderrTail: "ParseError: unexpected end of input",
+      }),
+      artifactContent: buildReproArtifactToolOutput().content,
+    });
+
+    await t.mutation(
+      internal.artifacts.storeReproContractFromAction,
+      reproContractArtifactToMutationArgs(
+        runId,
+        generateReproContract(
+          "run_pipeline",
+          sampleTriageArtifacts.typescriptVitestBug,
+        ),
+      ),
+    );
+    await t.mutation(
+      internal.artifacts.storeReproPlanFromAction,
+      reproPlanArtifactToMutationArgs(runId, planArtifact),
+    );
+    await t.mutation(
+      internal.artifacts.storeReproRunFromAction,
+      reproRunArtifactToMutationArgs(runId, reproRunArtifact),
+    );
+
+    await t.action(internal.pipeline.runVerify, { runId });
+
+    const result = await t.run(async (ctx) => {
+      return {
+        run: await ctx.db.get(runId),
+        dispatches: await ctx.db
+          .query("dispatches")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .collect(),
+      };
+    });
+
+    expect(actionsDispatcherState.dispatchWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflowFile: "repo-butler-verify.yml",
+      }),
+    );
+    expect(sandboxState.execute).not.toHaveBeenCalled();
+    expect(result.run).toMatchObject({
+      status: "verifying",
+    });
+    expect(result.dispatches).toHaveLength(1);
+    expect(result.dispatches[0]).toMatchObject({
+      stage: "verify",
+      status: "dispatched",
+    });
+  });
+
   it("reruns the stored reproduction artifact and stores a reproduced verification", async () => {
     sandboxState.execute.mockResolvedValue(
       buildSandboxResult({
