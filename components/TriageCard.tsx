@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -49,7 +50,7 @@ export function TriageCard({ issue, repo, run, triage }: TriageCardProps) {
   const environmentAssumptions = triage?.reproHypothesis?.environmentAssumptions;
   const issueNumber = issue ? `#${issue.githubIssueNumber.toString()}` : null;
   const backQuery = searchParams.toString();
-  const runDetailHref = `/runs/${run._id}${backQuery ? `?back=${encodeURIComponent(`/dashboard?${backQuery}`)}` : "?back=%2Fdashboard"}`;
+  const runDetailHref = `/runs/${run._id}${backQuery ? `?back=${encodeURIComponent(`/dashboard?${backQuery}`)}` : "?back=%2Fdashboard"}` as Route;
 
   return (
     <Panel className="overflow-hidden bg-panel/75">

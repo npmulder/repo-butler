@@ -23,7 +23,12 @@ if (missingWorkosEnvVars.length > 0) {
   console.warn(message);
 }
 
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+  typedRoutes: true,
+  typescript: {
+    tsconfigPath: "tsconfig.next.json",
+  },
+};
 
 export default nextConfig;
 

@@ -135,10 +135,14 @@ OpenRouter's Anthropic-compatible endpoint.
 ```bash
 pnpm run convex:codegen
 pnpm lint
-pnpm tsc --noEmit
+pnpm typecheck
 pnpm build
 pnpm dev
 ```
+
+`pnpm typecheck` runs `next typegen` before `tsc --noEmit`, using
+`tsconfig.next.json` for Next-managed `.next/types` generation while keeping the
+base `tsconfig.json` stable for standalone TypeScript checks.
 
 ## CI and deployment
 

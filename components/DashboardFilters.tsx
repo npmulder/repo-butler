@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import { useEffect, useState, useTransition } from "react";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { useQuery } from "convex/react";
@@ -39,10 +40,10 @@ const classificationOptions = [
 const controlClassName =
   "h-11 rounded-xl border border-border/80 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40 focus:ring-2 focus:ring-ring/30";
 
-function buildNextUrl(pathname: string, params: URLSearchParams) {
+function buildNextUrl(pathname: Route, params: URLSearchParams): Route {
   const search = params.toString();
 
-  return search.length > 0 ? `${pathname}?${search}` : pathname;
+  return (search.length > 0 ? `${pathname}?${search}` : pathname) as Route;
 }
 
 function parseRepoId(
@@ -59,7 +60,7 @@ function parseRepoId(
 export function DashboardFilters() {
   const currentUser = useQuery(api.users.getCurrentUser, {});
   const repos = useQuery(api.dashboard.getRepoList, currentUser ? {} : "skip");
-  const pathname = usePathname();
+  const pathname = usePathname() as Route;
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isRouting, startTransition] = useTransition();
