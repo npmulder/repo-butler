@@ -13,10 +13,9 @@ export const getByRunId = query({
     await requireRunAccess(ctx, args.runId);
 
     return await ctx.db
-      .query("reproRuns")
+      .query("verifications")
       .withIndex("by_run", (query) => query.eq("runId", args.runId))
-      .order("desc")
-      .first();
+      .unique();
   },
 });
 
@@ -24,14 +23,13 @@ export const getInternalByRunId = internalQuery({
   args: { runId: v.id("runs") },
   handler: async (ctx, args) => {
     return await ctx.db
-      .query("reproRuns")
+      .query("verifications")
       .withIndex("by_run", (query) => query.eq("runId", args.runId))
-      .order("desc")
-      .first();
+      .unique();
   },
 });
 
-export const listByRepo = query({
+export const listVerified = query({
   args: {
     repoId: v.id("repos"),
     limit: v.optional(v.number()),
@@ -39,28 +37,27 @@ export const listByRepo = query({
   handler: async (ctx, args) => {
     await requireRepoAccess(ctx, args.repoId);
 
-    const results = [];
     const limit = normalizeLimit(args.limit);
+    const verifications = [];
 
     for await (const run of ctx.db
       .query("runs")
       .withIndex("by_repo", (query) => query.eq("repoId", args.repoId))
       .order("desc")) {
-      const latest = await ctx.db
-        .query("reproRuns")
-        .withIndex("by_run", (query) => query.eq("runId", run._id))
-        .order("desc")
-        .first();
-
-      if (latest) {
-        results.push(latest);
+      if (verifications.length >= limit) {
+        break;
       }
 
-      if (results.length >= limit) {
-        break;
+      const verification = await ctx.db
+        .query("verifications")
+        .withIndex("by_run", (query) => query.eq("runId", run._id))
+        .unique();
+
+      if (verification?.verdict === "reproduced") {
+        verifications.push(verification);
       }
     }
 
-    return results;
+    return verifications;
   },
 });

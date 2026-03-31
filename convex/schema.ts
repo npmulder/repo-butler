@@ -388,6 +388,7 @@ export default defineSchema({
       networkUsed: v.boolean(),
       secretsAccessed: v.boolean(),
       writesOutsideWorkspace: v.boolean(),
+      ranAsRoot: v.boolean(),
     }),
     evidence: v.object({
       failingCmd: v.string(),

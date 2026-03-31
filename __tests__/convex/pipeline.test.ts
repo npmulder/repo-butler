@@ -97,10 +97,18 @@ import {
   seedRun,
   seedUser,
 } from "@/test-support/convex/testHelpers";
-import type {
-  ReproArtifactToolOutput,
-  ReproPlanToolOutput,
+import {
+  buildReproPlanArtifact,
+  buildReproRunArtifact,
+  reproPlanArtifactToMutationArgs,
+  reproRunArtifactToMutationArgs,
+  type ReproArtifactToolOutput,
+  type ReproPlanToolOutput,
 } from "@/lib/repro-parser";
+import {
+  generateReproContract,
+  reproContractArtifactToMutationArgs,
+} from "@/lib/prompts/verifier";
 
 function buildClaudeResponse({
   reproEligible = true,
@@ -259,7 +267,7 @@ function buildSandboxResult(
   }> = {},
 ) {
   const status = overrides.status ?? "failure";
-  const exitCode = overrides.exitCode ?? 1;
+  const exitCode = overrides.exitCode ?? (status === "timeout" ? 124 : 1);
 
   return {
     runId: "run_pipeline",
@@ -667,6 +675,10 @@ describe("pipeline.runReproduce", () => {
     const result = await t.run(async (ctx) => {
       return {
         run: await ctx.db.get(runId),
+        contract: await ctx.db
+          .query("reproContracts")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .unique(),
         plan: await ctx.db
           .query("reproPlans")
           .withIndex("by_run", (q) => q.eq("runId", runId))
@@ -692,8 +704,14 @@ describe("pipeline.runReproduce", () => {
       anthropicState.create.mock.calls[1]?.[0]?.messages[0]?.content,
     ).toContain("Import error - missing module or incorrect path");
     expect(result.run).toMatchObject({
-      status: "completed",
-      verdict: "reproduced",
+      status: "verifying",
+    });
+    expect(result.run?.verdict).toBeUndefined();
+    expect(result.contract).toMatchObject({
+      schemaVersion: "rb.repro_contract.v1",
+      acceptance: {
+        mustNotRequireNetwork: true,
+      },
     });
     expect(result.plan).toMatchObject({
       schemaVersion: "rb.repro_plan.v1",
@@ -739,5 +757,207 @@ describe("pipeline.runReproduce", () => {
       errorMessage: "Failed to reproduce after 6 iterations",
     });
     expect(result.reproRuns).toHaveLength(6);
+  });
+});
+
+describe("pipeline.runVerify", () => {
+  it("reruns the stored reproduction artifact and stores a reproduced verification", async () => {
+    sandboxState.execute.mockResolvedValue(
+      buildSandboxResult({
+        stderrTail: "ParseError: unexpected end of input",
+      }),
+    );
+    const { t, runId } = await setupPipelineFixture();
+    await seedTriageResult(t, runId);
+
+    const planArtifact = buildReproPlanArtifact({
+      runId: "run_pipeline",
+      toolOutput: buildReproPlanToolOutput(),
+      defaultBaseRevision: {
+        ref: "refs/heads/main",
+        sha: "deadbee1234567890deadbee1234567890deadb",
+      },
+    });
+    const reproRunArtifact = buildReproRunArtifact({
+      runId: "run_pipeline",
+      iteration: 1,
+      sandboxResult: buildSandboxResult({
+        stderrTail: "ParseError: unexpected end of input",
+      }),
+      artifactContent: buildReproArtifactToolOutput().content,
+    });
+
+    await t.mutation(
+      internal.artifacts.storeReproContractFromAction,
+      reproContractArtifactToMutationArgs(
+        runId,
+        generateReproContract(
+          "run_pipeline",
+          sampleTriageArtifacts.typescriptVitestBug,
+        ),
+      ),
+    );
+    await t.mutation(
+      internal.artifacts.storeReproPlanFromAction,
+      reproPlanArtifactToMutationArgs(runId, planArtifact),
+    );
+    await t.mutation(
+      internal.artifacts.storeReproRunFromAction,
+      reproRunArtifactToMutationArgs(runId, reproRunArtifact),
+    );
+
+    await t.action(internal.pipeline.runVerify, { runId });
+
+    const result = await t.run(async (ctx) => {
+      return {
+        run: await ctx.db.get(runId),
+        contract: await ctx.db
+          .query("reproContracts")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .unique(),
+        verification: await ctx.db
+          .query("verifications")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .unique(),
+      };
+    });
+
+    expect(sandboxState.execute.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(sandboxState.execute.mock.calls[0]?.[0]).toMatchObject({
+      policy: {
+        network: "disabled",
+        runAsRoot: false,
+        secretsMount: "none",
+      },
+    });
+    expect(result.contract).toMatchObject({
+      schemaVersion: "rb.repro_contract.v1",
+    });
+    expect(result.verification).toMatchObject({
+      verdict: "reproduced",
+      policyChecks: {
+        networkUsed: false,
+        secretsAccessed: false,
+        writesOutsideWorkspace: false,
+        ranAsRoot: false,
+      },
+    });
+    expect(result.verification?.determinism).toMatchObject({
+      reruns: BigInt(3),
+      fails: BigInt(3),
+      flakeRate: 0,
+    });
+    expect(result.run).toMatchObject({
+      status: "completed",
+      verdict: "reproduced",
+    });
+  });
+
+  it("uses the stored repro contract instead of regenerating it during verification", async () => {
+    sandboxState.execute.mockResolvedValue(
+      buildSandboxResult({
+        stderrTail: "ParseError: unexpected end of input",
+      }),
+    );
+    const { t, runId } = await setupPipelineFixture();
+    await seedTriageResult(t, runId);
+
+    const contract = generateReproContract(
+      "run_pipeline",
+      sampleTriageArtifacts.typescriptVitestBug,
+    );
+    contract.acceptance.must_be_deterministic.reruns = 1;
+
+    const planArtifact = buildReproPlanArtifact({
+      runId: "run_pipeline",
+      toolOutput: buildReproPlanToolOutput(),
+      defaultBaseRevision: {
+        ref: "refs/heads/main",
+        sha: "deadbee1234567890deadbee1234567890deadb",
+      },
+    });
+    const reproRunArtifact = buildReproRunArtifact({
+      runId: "run_pipeline",
+      iteration: 1,
+      sandboxResult: buildSandboxResult(),
+      artifactContent: buildReproArtifactToolOutput().content,
+    });
+
+    await t.mutation(
+      internal.artifacts.storeReproContractFromAction,
+      reproContractArtifactToMutationArgs(runId, contract),
+    );
+    await t.mutation(
+      internal.artifacts.storeReproPlanFromAction,
+      reproPlanArtifactToMutationArgs(runId, planArtifact),
+    );
+    await t.mutation(
+      internal.artifacts.storeReproRunFromAction,
+      reproRunArtifactToMutationArgs(runId, reproRunArtifact),
+    );
+
+    await t.action(internal.pipeline.runVerify, { runId });
+
+    const result = await t.run(async (ctx) => {
+      return await ctx.db
+        .query("reproContracts")
+        .withIndex("by_run", (q) => q.eq("runId", runId))
+        .unique();
+    });
+
+    expect(sandboxState.execute).toHaveBeenCalledTimes(1);
+    expect(result?.acceptance.mustBeDeterministic.reruns).toBe(BigInt(1));
+  });
+
+  it("fails fast when the stored repro contract requests unsupported sandbox policy", async () => {
+    const { t, runId } = await setupPipelineFixture();
+    await seedTriageResult(t, runId);
+
+    const contract = generateReproContract(
+      "run_pipeline",
+      sampleTriageArtifacts.typescriptVitestBug,
+    );
+    contract.sandbox_policy.secrets_mount = "readonly";
+
+    const planArtifact = buildReproPlanArtifact({
+      runId: "run_pipeline",
+      toolOutput: buildReproPlanToolOutput(),
+      defaultBaseRevision: {
+        ref: "refs/heads/main",
+        sha: "deadbee1234567890deadbee1234567890deadb",
+      },
+    });
+    const reproRunArtifact = buildReproRunArtifact({
+      runId: "run_pipeline",
+      iteration: 1,
+      sandboxResult: buildSandboxResult(),
+      artifactContent: buildReproArtifactToolOutput().content,
+    });
+
+    await t.mutation(
+      internal.artifacts.storeReproContractFromAction,
+      reproContractArtifactToMutationArgs(runId, contract),
+    );
+    await t.mutation(
+      internal.artifacts.storeReproPlanFromAction,
+      reproPlanArtifactToMutationArgs(runId, planArtifact),
+    );
+    await t.mutation(
+      internal.artifacts.storeReproRunFromAction,
+      reproRunArtifactToMutationArgs(runId, reproRunArtifact),
+    );
+
+    await t.action(internal.pipeline.runVerify, { runId });
+
+    const result = await t.run(async (ctx) => {
+      return await ctx.db.get(runId);
+    });
+
+    expect(sandboxState.execute).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      status: "failed",
+      errorMessage:
+        "Verification sandbox does not support contracts with secrets_mount=readonly",
+    });
   });
 });

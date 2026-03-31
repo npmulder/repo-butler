@@ -163,6 +163,7 @@ function buildVerification(
       networkUsed: false,
       secretsAccessed: false,
       writesOutsideWorkspace: false,
+      ranAsRoot: false,
     },
     evidence: {
       failingCmd: "pnpm test",

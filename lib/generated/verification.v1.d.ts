@@ -16,6 +16,7 @@ export interface Verification {
     network_used: boolean;
     secrets_accessed: boolean;
     writes_outside_workspace: boolean;
+    ran_as_root: boolean;
   };
   evidence: {
     failing_cmd: string;
