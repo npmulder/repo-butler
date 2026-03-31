@@ -286,15 +286,25 @@ async function loadLatestRunForIssue(
   repoId: Id<"repos">,
   issueNumber: bigint,
 ) {
-  const issue = await ctx.db
-    .query("issues")
-    .withIndex(
-      "by_repo_and_github_issue_number_and_snapshoted_at",
-      (indexQuery) =>
-        indexQuery.eq("repoId", repoId).eq("githubIssueNumber", issueNumber),
-    )
-    .order("desc")
-    .first();
+  const issue =
+    (await ctx.db
+      .query("issues")
+      .withIndex(
+        "by_repo_and_github_issue_number_and_snapshotted_at",
+        (indexQuery) =>
+          indexQuery.eq("repoId", repoId).eq("githubIssueNumber", issueNumber),
+      )
+      .order("desc")
+      .first()) ??
+    (await ctx.db
+      .query("issues")
+      .withIndex(
+        "by_repo_and_github_issue_number_and_snapshoted_at",
+        (indexQuery) =>
+          indexQuery.eq("repoId", repoId).eq("githubIssueNumber", issueNumber),
+      )
+      .order("desc")
+      .first());
 
   if (!issue) {
     return null;

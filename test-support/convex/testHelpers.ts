@@ -155,6 +155,7 @@ export async function seedIssue(
       labels: options.labels ?? [],
       state: options.state ?? "open",
       snapshotedAt: Date.now(),
+      snapshottedAt: Date.now(),
       createdAt: Date.now(),
     });
   });

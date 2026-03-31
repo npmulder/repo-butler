@@ -99,6 +99,7 @@ function createWebhookStore(
         labels: input.labels,
         state: input.state,
         snapshotedAt: now,
+        snapshottedAt: now,
         createdAt: now,
       });
 

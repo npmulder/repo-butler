@@ -26,6 +26,7 @@ import {
   severityColor,
   timeAgo,
 } from "@/lib/formatting";
+import { getIssueSnapshottedAt } from "@/lib/issueSnapshot";
 import { cn } from "@/lib/utils";
 
 type TriageCardProps = {
@@ -242,7 +243,11 @@ export function TriageCard({ issue, repo, run, triage }: TriageCardProps) {
                 Issue created
               </span>
               <span className="text-right text-foreground/90">
-                {formatTimestamp(issue?.githubCreatedAt ?? issue?.snapshotedAt)}
+                {formatTimestamp(
+                  issue
+                    ? issue.githubCreatedAt ?? getIssueSnapshottedAt(issue)
+                    : undefined,
+                )}
               </span>
             </div>
 

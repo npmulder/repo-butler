@@ -43,6 +43,7 @@ import {
   type TriageArtifact,
   validateTriageArtifact,
 } from "../lib/triage-parser";
+import { getIssueSnapshottedAt } from "../lib/issueSnapshot";
 import {
   buildArtifactWriteCommand,
   buildReproPlanArtifact,
@@ -278,7 +279,7 @@ function buildTriageInput(
       author: issue.authorLogin,
       labels: issue.labels,
       createdAt: new Date(
-        issue.githubCreatedAt ?? issue.snapshotedAt,
+        issue.githubCreatedAt ?? getIssueSnapshottedAt(issue),
       ).toISOString(),
     },
     ...(repoContext ? { repoContext } : {}),

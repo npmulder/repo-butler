@@ -1,6 +1,13 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import {
+  internalMutation,
+  internalQuery,
+  query,
+  type QueryCtx,
+} from "./_generated/server";
 import { requireRepoAccess } from "./lib/auth";
+import { getIssueSnapshottedAt } from "../lib/issueSnapshot";
 
 const issueStateValidator = v.union(v.literal("open"), v.literal("closed"));
 
@@ -11,6 +18,34 @@ const commentsSnapshotValidator = v.array(
     createdAt: v.string(),
   }),
 );
+
+async function getByGithubIssueFromSnapshottedIndex(
+  ctx: QueryCtx,
+  repoId: Id<"repos">,
+  githubIssueNumber: bigint,
+) {
+  return await ctx.db
+    .query("issues")
+    .withIndex("by_repo_and_github_issue_number_and_snapshotted_at", (q) =>
+      q.eq("repoId", repoId).eq("githubIssueNumber", githubIssueNumber),
+    )
+    .order("desc")
+    .first();
+}
+
+async function getByGithubIssueFromLegacyIndex(
+  ctx: QueryCtx,
+  repoId: Id<"repos">,
+  githubIssueNumber: bigint,
+) {
+  return await ctx.db
+    .query("issues")
+    .withIndex("by_repo_and_github_issue_number_and_snapshoted_at", (q) =>
+      q.eq("repoId", repoId).eq("githubIssueNumber", githubIssueNumber),
+    )
+    .order("desc")
+    .first();
+}
 
 export const snapshot = internalMutation({
   args: {
@@ -52,6 +87,7 @@ export const snapshot = internalMutation({
         : {}),
       ...(args.linkedPRs !== undefined ? { linkedPRs: args.linkedPRs } : {}),
       snapshotedAt: now,
+      snapshottedAt: now,
       createdAt: now,
     });
   },
@@ -62,15 +98,18 @@ export const getByGithubIssue = query({
   handler: async (ctx, args) => {
     await requireRepoAccess(ctx, args.repoId);
 
-    return await ctx.db
-      .query("issues")
-      .withIndex("by_repo_and_github_issue_number_and_snapshoted_at", (q) =>
-        q
-          .eq("repoId", args.repoId)
-          .eq("githubIssueNumber", args.githubIssueNumber),
-      )
-      .order("desc")
-      .first();
+    return (
+      (await getByGithubIssueFromSnapshottedIndex(
+        ctx,
+        args.repoId,
+        args.githubIssueNumber,
+      )) ??
+      (await getByGithubIssueFromLegacyIndex(
+        ctx,
+        args.repoId,
+        args.githubIssueNumber,
+      ))
+    );
   },
 });
 
@@ -86,10 +125,33 @@ export const listByRepo = query({
   handler: async (ctx, args) => {
     await requireRepoAccess(ctx, args.repoId);
 
-    return await ctx.db
-      .query("issues")
-      .withIndex("by_repo", (q) => q.eq("repoId", args.repoId))
-      .order("desc")
-      .take(50);
+    const [snapshottedIssues, legacyIssues] = await Promise.all([
+      ctx.db
+        .query("issues")
+        .withIndex("by_repo_and_snapshotted_at", (q) =>
+          q.eq("repoId", args.repoId),
+        )
+        .order("desc")
+        .take(50),
+      ctx.db
+        .query("issues")
+        .withIndex("by_repo", (q) => q.eq("repoId", args.repoId))
+        .order("desc")
+        .take(50),
+    ]);
+
+    return [
+      ...new Map(
+        [...snapshottedIssues, ...legacyIssues].map((issue) => [
+          issue._id,
+          issue,
+        ]),
+      ).values(),
+    ]
+      .sort(
+        (left, right) =>
+          getIssueSnapshottedAt(right) - getIssueSnapshottedAt(left),
+      )
+      .slice(0, 50);
   },
 });

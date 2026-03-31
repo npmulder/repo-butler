@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
+    "@convex-dev/migrations": "^0.3.3",
     "@convex-dev/workos": "0.0.1",
     "@convex-dev/workos-authkit": "0.1.6",
     "@opennextjs/cloudflare": "^1.18.0",

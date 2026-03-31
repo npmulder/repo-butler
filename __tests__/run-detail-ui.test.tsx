@@ -61,6 +61,7 @@ function buildIssue(overrides: Partial<Doc<"issues">> = {}): Doc<"issues"> {
     labels: ["bug"],
     repoId: "repo_1" as Doc<"issues">["repoId"],
     snapshotedAt: Date.UTC(2026, 2, 28, 21, 45, 0),
+    snapshottedAt: Date.UTC(2026, 2, 28, 21, 45, 0),
     state: "open",
     title: "Parser crash on empty YAML",
     ...overrides,

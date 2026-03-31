@@ -17,6 +17,7 @@ import type * as http from "../http.js";
 import type * as issues from "../issues.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_githubWebhooks from "../lib/githubWebhooks.js";
+import type * as migrations from "../migrations.js";
 import type * as pipeline from "../pipeline.js";
 import type * as repoSettings from "../repoSettings.js";
 import type * as reports from "../reports.js";
@@ -47,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   issues: typeof issues;
   "lib/auth": typeof lib_auth;
   "lib/githubWebhooks": typeof lib_githubWebhooks;
+  migrations: typeof migrations;
   pipeline: typeof pipeline;
   repoSettings: typeof repoSettings;
   reports: typeof reports;
@@ -89,6 +91,93 @@ export declare const internal: FilterApi<
 >;
 
 export declare const components: {
+  migrations: {
+    lib: {
+      cancel: FunctionReference<
+        "mutation",
+        "internal",
+        { name: string },
+        {
+          batchSize?: number;
+          cursor?: string | null;
+          error?: string;
+          isDone: boolean;
+          latestEnd?: number;
+          latestStart: number;
+          name: string;
+          next?: Array<string>;
+          processed: number;
+          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
+        }
+      >;
+      cancelAll: FunctionReference<
+        "mutation",
+        "internal",
+        { sinceTs?: number },
+        Array<{
+          batchSize?: number;
+          cursor?: string | null;
+          error?: string;
+          isDone: boolean;
+          latestEnd?: number;
+          latestStart: number;
+          name: string;
+          next?: Array<string>;
+          processed: number;
+          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
+        }>
+      >;
+      clearAll: FunctionReference<
+        "mutation",
+        "internal",
+        { before?: number },
+        null
+      >;
+      getStatus: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number; names?: Array<string> },
+        Array<{
+          batchSize?: number;
+          cursor?: string | null;
+          error?: string;
+          isDone: boolean;
+          latestEnd?: number;
+          latestStart: number;
+          name: string;
+          next?: Array<string>;
+          processed: number;
+          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
+        }>
+      >;
+      migrate: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          batchSize?: number;
+          cursor?: string | null;
+          dryRun: boolean;
+          fnHandle: string;
+          name: string;
+          next?: Array<{ fnHandle: string; name: string }>;
+          oneBatchOnly?: boolean;
+          reset?: boolean;
+        },
+        {
+          batchSize?: number;
+          cursor?: string | null;
+          error?: string;
+          isDone: boolean;
+          latestEnd?: number;
+          latestStart: number;
+          name: string;
+          next?: Array<string>;
+          processed: number;
+          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
+        }
+      >;
+    };
+  };
   workOSAuthKit: {
     lib: {
       enqueueWebhookEvent: FunctionReference<
