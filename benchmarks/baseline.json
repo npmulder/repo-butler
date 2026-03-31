@@ -1,0 +1,26 @@
+{
+  "date": "2026-03-31",
+  "total": 30,
+  "triageAccuracy": 0,
+  "reproSuccessRate": 0,
+  "envFailureRate": 0,
+  "verificationPassRate": 0,
+  "failToPassRate": 0,
+  "avgIterations": 0,
+  "avgTotalTimeSeconds": 0,
+  "byDifficulty": {
+    "easy": {
+      "total": 0,
+      "passed": 0
+    },
+    "medium": {
+      "total": 0,
+      "passed": 0
+    },
+    "hard": {
+      "total": 0,
+      "passed": 0
+    }
+  },
+  "notes": "Initial placeholder baseline. Replace with the first audited full benchmark run."
+}

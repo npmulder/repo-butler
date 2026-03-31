@@ -1,0 +1,56 @@
+name: Benchmark Regression Suite
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "benchmarks/**"
+      - "lib/prompts/**"
+      - "lib/claude.ts"
+      - "lib/repro-parser.ts"
+      - "lib/triage-parser.ts"
+      - "lib/verification.ts"
+      - "worker/**"
+      - "convex/pipeline.ts"
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Docker availability
+        run: docker info
+
+      - name: Run benchmark suite
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: pnpm exec tsx benchmarks/run-benchmark.ts --suite all --output-dir benchmarks/results
+
+      - name: Check for regression
+        run: pnpm exec tsx benchmarks/check-regression.ts --current benchmarks/results/metrics.json --baseline benchmarks/baseline.json
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmarks/results
