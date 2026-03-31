@@ -44,6 +44,7 @@ export interface WorkflowDispatchInputs {
   language_hint?: string;
   runtime_hint?: string;
   reruns?: string;
+  iteration?: string;
 }
 
 export interface DispatchInput {
@@ -205,6 +206,9 @@ export async function buildWorkflowDispatchInputs(input: {
       : {}),
     ...(input.stored.reruns !== undefined
       ? { reruns: String(input.stored.reruns) }
+      : {}),
+    ...(input.stored.iteration !== undefined
+      ? { iteration: String(input.stored.iteration) }
       : {}),
   };
 }

@@ -31,6 +31,7 @@ type SharedInputs = {
   environmentStrategy?: SandboxEnvironmentStrategy;
   languageHint?: string;
   runtimeHint?: string;
+  iteration?: number;
 };
 
 function readRequiredInput(name: string): string {
@@ -98,13 +99,17 @@ function readSharedInputs(): SharedInputs {
     throw new Error("policy_network must be 'disabled' or 'enabled'");
   }
 
-  const policyTimeout = Number.parseInt(readRequiredInput("policy_timeout"), 10);
+  const policyTimeout = Number.parseInt(
+    readRequiredInput("policy_timeout"),
+    10,
+  );
 
   if (!Number.isFinite(policyTimeout) || policyTimeout <= 0) {
     throw new Error("policy_timeout must be a positive integer");
   }
 
   const environmentStrategy = readOptionalInput("environment_strategy");
+  const iteration = readOptionalNumber(readOptionalInput("iteration"));
 
   return {
     dispatchId: readRequiredInput("dispatch_id"),
@@ -113,14 +118,19 @@ function readSharedInputs(): SharedInputs {
     targetRef: readRequiredInput("target_ref"),
     targetSha: readRequiredInput("target_sha"),
     artifactPath: readRequiredInput("artifact_path"),
-    artifactContent: decodeArtifactContent(readRequiredInput("artifact_content_b64")),
+    artifactContent: decodeArtifactContent(
+      readRequiredInput("artifact_content_b64"),
+    ),
     commands: parseCommands(readRequiredInput("commands_json")),
     callbackUrl: readRequiredInput("callback_url"),
     callbackSecret: readRequiredInput("callback_secret"),
     policyNetwork,
     policyTimeout,
     ...(environmentStrategy
-      ? { environmentStrategy: environmentStrategy as SandboxEnvironmentStrategy }
+      ? {
+          environmentStrategy:
+            environmentStrategy as SandboxEnvironmentStrategy,
+        }
       : {}),
     ...(readOptionalInput("language_hint")
       ? { languageHint: readOptionalInput("language_hint") }
@@ -128,6 +138,7 @@ function readSharedInputs(): SharedInputs {
     ...(readOptionalInput("runtime_hint")
       ? { runtimeHint: readOptionalInput("runtime_hint") }
       : {}),
+    ...(iteration !== undefined ? { iteration } : {}),
   };
 }
 
@@ -197,7 +208,9 @@ async function postCallback(
 async function executeReproduction(
   inputs: SharedInputs,
 ): Promise<Record<string, unknown>> {
-  const sandboxResult = await runSandbox(buildSandboxRequest(inputs.runId, inputs));
+  const sandboxResult = await runSandbox(
+    buildSandboxRequest(inputs.runId, inputs),
+  );
 
   return {
     dispatch_id: inputs.dispatchId,
@@ -209,11 +222,13 @@ async function executeReproduction(
       ? { github_run_id: readOptionalNumber(process.env.GITHUB_RUN_ID) }
       : {}),
     ...(readOptionalNumber(process.env.GITHUB_RUN_ATTEMPT)
-      ? { github_run_attempt: readOptionalNumber(process.env.GITHUB_RUN_ATTEMPT) }
+      ? {
+          github_run_attempt: readOptionalNumber(
+            process.env.GITHUB_RUN_ATTEMPT,
+          ),
+        }
       : {}),
-    ...(readOptionalNumber(readOptionalInput("iteration"))
-      ? { iteration: readOptionalNumber(readOptionalInput("iteration")) }
-      : {}),
+    ...(inputs.iteration !== undefined ? { iteration: inputs.iteration } : {}),
     sandbox_result: sandboxResult,
   };
 }
@@ -247,7 +262,11 @@ async function executeVerification(
       ? { github_run_id: readOptionalNumber(process.env.GITHUB_RUN_ID) }
       : {}),
     ...(readOptionalNumber(process.env.GITHUB_RUN_ATTEMPT)
-      ? { github_run_attempt: readOptionalNumber(process.env.GITHUB_RUN_ATTEMPT) }
+      ? {
+          github_run_attempt: readOptionalNumber(
+            process.env.GITHUB_RUN_ATTEMPT,
+          ),
+        }
       : {}),
     rerun_results: rerunResults,
   };
@@ -257,7 +276,9 @@ async function main() {
   const stage = process.argv[2];
 
   if (stage !== "reproduce" && stage !== "verify") {
-    throw new Error("Usage: tsx worker/actions-entrypoint.ts <reproduce|verify>");
+    throw new Error(
+      "Usage: tsx worker/actions-entrypoint.ts <reproduce|verify>",
+    );
   }
 
   const inputs = readSharedInputs();
@@ -275,15 +296,20 @@ async function main() {
       run_id: inputs.runId,
       stage,
       workflow:
-        stage === "reproduce"
-          ? REPRODUCE_WORKFLOW_FILE
-          : VERIFY_WORKFLOW_FILE,
+        stage === "reproduce" ? REPRODUCE_WORKFLOW_FILE : VERIFY_WORKFLOW_FILE,
       status: "failed",
       ...(readOptionalNumber(process.env.GITHUB_RUN_ID)
         ? { github_run_id: readOptionalNumber(process.env.GITHUB_RUN_ID) }
         : {}),
       ...(readOptionalNumber(process.env.GITHUB_RUN_ATTEMPT)
-        ? { github_run_attempt: readOptionalNumber(process.env.GITHUB_RUN_ATTEMPT) }
+        ? {
+            github_run_attempt: readOptionalNumber(
+              process.env.GITHUB_RUN_ATTEMPT,
+            ),
+          }
+        : {}),
+      ...(stage === "reproduce" && inputs.iteration !== undefined
+        ? { iteration: inputs.iteration }
         : {}),
       error: error instanceof Error ? error.message : "Unknown workflow error",
     };

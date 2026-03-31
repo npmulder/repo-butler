@@ -41,7 +41,14 @@ import {
   generateReproContract,
   reproContractArtifactToMutationArgs,
 } from "@/lib/prompts/verifier";
-import { createTestConvex, seedInstallation, seedIssue, seedRepo, seedRun, seedUser } from "@/test-support/convex/testHelpers";
+import {
+  createTestConvex,
+  seedInstallation,
+  seedIssue,
+  seedRepo,
+  seedRun,
+  seedUser,
+} from "@/test-support/convex/testHelpers";
 import { sampleTriageArtifacts } from "@/__tests__/fixtures/sample-triage";
 import type { SandboxResult } from "@/worker/types";
 
@@ -216,13 +223,16 @@ describe("actions dispatcher helpers", () => {
     expect(
       Buffer.from(inputs.artifact_content_b64, "base64").toString("utf8"),
     ).toBe("console.log('hello');\n");
-    expect(inputs.commands_json).toBe('[{"name":"run_test","cmd":"pnpm test"}]');
+    expect(inputs.commands_json).toBe(
+      '[{"name":"run_test","cmd":"pnpm test"}]',
+    );
     expect(inputs.policy_timeout).toBe("900");
+    expect(inputs.iteration).toBe("2");
   });
 });
 
 describe("workflow files", () => {
-  it("keep read-only permissions and invoke the Actions entrypoint", async () => {
+  it("keep read-only permissions and map workflow inputs into the Actions entrypoint environment", async () => {
     const reproduceWorkflow = await fs.readFile(
       path.join(process.cwd(), ".github/workflows/repo-butler-reproduce.yml"),
       "utf8",
@@ -240,6 +250,13 @@ describe("workflow files", () => {
     expect(verifyWorkflow).toContain(
       "pnpm exec tsx worker/actions-entrypoint.ts verify",
     );
+    expect(reproduceWorkflow).toContain(
+      "INPUT_DISPATCH_ID: ${{ inputs.dispatch_id }}",
+    );
+    expect(reproduceWorkflow).toContain(
+      "INPUT_ITERATION: ${{ inputs.iteration }}",
+    );
+    expect(verifyWorkflow).toContain("INPUT_RERUNS: ${{ inputs.reruns }}");
     expect(reproduceWorkflow).toContain('default: "1200"');
     expect(verifyWorkflow).toContain('default: "1200"');
   });
@@ -247,7 +264,8 @@ describe("workflow files", () => {
 
 describe("dispatcher.handleCallback", () => {
   it("stores reproduction results and advances the run to verifying", async () => {
-    const { t, runId, runIdentifier } = await setupRunFixture("run_dispatch_repro");
+    const { t, runId, runIdentifier } =
+      await setupRunFixture("run_dispatch_repro");
 
     await t.mutation(internal.artifacts.storeTriage, {
       runId,
@@ -320,7 +338,9 @@ describe("dispatcher.handleCallback", () => {
   });
 
   it("stores verification results and advances the run to reporting", async () => {
-    const { t, runId, runIdentifier } = await setupRunFixture("run_dispatch_verify");
+    const { t, runId, runIdentifier } = await setupRunFixture(
+      "run_dispatch_verify",
+    );
 
     await t.mutation(internal.artifacts.storeTriage, {
       runId,
@@ -441,5 +461,91 @@ describe("dispatcher.handleCallback", () => {
       status: "reporting",
       verdict: "reproduced",
     });
+  });
+
+  it("ignores duplicate callbacks after a dispatch has already completed", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-31T19:00:00.000Z"));
+
+    try {
+      const { t, runId, runIdentifier } = await setupRunFixture(
+        "run_dispatch_duplicate_callback",
+      );
+
+      await t.mutation(internal.artifacts.storeTriage, {
+        runId,
+        artifact: {
+          ...sampleTriageArtifacts.typescriptVitestBug,
+          run_id: runIdentifier,
+        },
+        tokensUsed: {
+          input: 1,
+          output: 1,
+        },
+      });
+
+      const dispatchId = await t.mutation(internal.dispatcher.recordDispatch, {
+        runId,
+        stage: "reproduce",
+        workflowFile: REPRODUCE_WORKFLOW_FILE,
+        owner: "repo-butler",
+        repo: "example",
+        ref: "main",
+        inputs: {
+          targetRepo: "repo-butler/example",
+          targetRef: "main",
+          targetSha: "deadbeef",
+          artifactPath: "tests/repro.spec.ts",
+          artifactContent: "failing repro body",
+          commands: [{ name: "run_test", cmd: "pnpm test" }],
+          callbackUrl: "https://example.convex.site/actions/callback",
+          policyNetwork: "disabled",
+          policyTimeout: 1200,
+          iteration: 1,
+        },
+      });
+
+      const callbackResult = {
+        dispatch_id: dispatchId,
+        run_id: runIdentifier,
+        stage: "reproduce" as const,
+        workflow: REPRODUCE_WORKFLOW_FILE,
+        status: "completed" as const,
+        iteration: 1,
+        sandbox_result: buildSandboxResult(),
+      };
+
+      await t.mutation(internal.dispatcher.handleCallback, {
+        dispatchId,
+        result: callbackResult,
+      });
+
+      const firstDispatch = await t.run(
+        async (ctx) => await ctx.db.get(dispatchId),
+      );
+      vi.setSystemTime(new Date("2026-03-31T19:00:05.000Z"));
+
+      await t.mutation(internal.dispatcher.handleCallback, {
+        dispatchId,
+        result: callbackResult,
+      });
+
+      const result = await t.run(async (ctx) => {
+        return {
+          dispatch: await ctx.db.get(dispatchId),
+          reproRuns: await ctx.db
+            .query("reproRuns")
+            .withIndex("by_run", (q) => q.eq("runId", runId))
+            .collect(),
+        };
+      });
+
+      expect(firstDispatch?.completedAt).toBeDefined();
+      expect(result.dispatch?.completedAt).toBe(firstDispatch?.completedAt);
+      expect(result.dispatch?.result).toEqual(callbackResult);
+      expect(result.reproRuns).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

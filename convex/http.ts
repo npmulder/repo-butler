@@ -250,7 +250,7 @@ http.route({
       });
     } catch (error) {
       console.error("Actions callback verification error:", error);
-      return new Response("Callback secret is not configured", { status: 500 });
+      return new Response("Callback verification failed", { status: 500 });
     }
 
     if (!isValid) {

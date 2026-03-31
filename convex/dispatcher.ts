@@ -66,13 +66,12 @@ function readString(value: unknown): string | null {
 }
 
 function readNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
-function findRelevantReproStep(
-  result: SandboxResult,
-  commandNames: string[],
-) {
+function findRelevantReproStep(result: SandboxResult, commandNames: string[]) {
   const fallbackStep = result.steps[result.steps.length - 1];
 
   if (commandNames.length === 0) {
@@ -91,16 +90,15 @@ function findRelevantReproStep(
   }
 
   return (
-    [...result.steps].reverse().find((step) => commandNames.includes(step.name)) ??
-    fallbackStep
+    [...result.steps]
+      .reverse()
+      .find((step) => commandNames.includes(step.name)) ?? fallbackStep
   );
 }
 
 function matchesExpectedFailureSignal(
   result: SandboxResult,
-  step:
-    | SandboxResult["steps"][number]
-    | undefined,
+  step: SandboxResult["steps"][number] | undefined,
   signal: {
     kind: string;
     match_any?: string[];
@@ -203,7 +201,9 @@ function buildReproRunMutationArgs(input: {
 }
 
 function findVerificationStep(result: SandboxResult) {
-  const candidateSteps = result.steps.filter((step) => step.name !== "write_artifact");
+  const candidateSteps = result.steps.filter(
+    (step) => step.name !== "write_artifact",
+  );
 
   const namedTestStep = [...candidateSteps]
     .reverse()
@@ -213,9 +213,13 @@ function findVerificationStep(result: SandboxResult) {
     return namedTestStep;
   }
 
-  const frameworkStep = [...candidateSteps].reverse().find((step) =>
-    /(pytest|vitest|jest|go test|npm test|pnpm test|yarn test)/.test(step.cmd),
-  );
+  const frameworkStep = [...candidateSteps]
+    .reverse()
+    .find((step) =>
+      /(pytest|vitest|jest|go test|npm test|pnpm test|yarn test)/.test(
+        step.cmd,
+      ),
+    );
 
   if (frameworkStep) {
     return frameworkStep;
@@ -388,9 +392,7 @@ function buildVerificationMutationArgs(input: {
   };
 }
 
-function normalizeCallbackResult(
-  value: unknown,
-): DispatchCallbackResult {
+function normalizeCallbackResult(value: unknown): DispatchCallbackResult {
   if (!isRecord(value)) {
     throw new Error("Invalid callback payload");
   }
@@ -427,7 +429,9 @@ function normalizeCallbackResult(
       ? { github_run_attempt: githubRunAttempt }
       : {}),
     ...(iteration !== undefined ? { iteration } : {}),
-    ...(value.sandbox_result ? { sandbox_result: value.sandbox_result as SandboxResult } : {}),
+    ...(value.sandbox_result
+      ? { sandbox_result: value.sandbox_result as SandboxResult }
+      : {}),
     ...(Array.isArray(value.rerun_results)
       ? { rerun_results: value.rerun_results as SandboxResult[] }
       : {}),
@@ -518,6 +522,10 @@ export const handleCallback = internalMutation({
 
     if (!dispatch) {
       throw new Error("Dispatch not found");
+    }
+
+    if (dispatch.status === "completed" || dispatch.status === "failed") {
+      return;
     }
 
     const run = await ctx.db.get(dispatch.runId);
