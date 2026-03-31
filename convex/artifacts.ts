@@ -422,6 +422,39 @@ async function upsertReproRunDoc(
   return await ctx.db.insert("reproRuns", doc);
 }
 
+async function syncRunLatestReproRun(
+  ctx: MutationCtx,
+  runId: Id<"runs">,
+) {
+  const latestReproRun = await ctx.db
+    .query("reproRuns")
+    .withIndex("by_run", (q) => q.eq("runId", runId))
+    .order("desc")
+    .first();
+
+  if (!latestReproRun) {
+    return;
+  }
+
+  const run = await ctx.db.get(runId);
+
+  if (!run) {
+    throw new Error("Run not found");
+  }
+
+  if (
+    run.hasReproRun === true &&
+    run.latestReproRunId === latestReproRun._id
+  ) {
+    return;
+  }
+
+  await ctx.db.patch(runId, {
+    hasReproRun: true,
+    latestReproRunId: latestReproRun._id,
+  });
+}
+
 async function upsertVerificationDoc(
   ctx: MutationCtx,
   run: Doc<"runs">,
@@ -668,7 +701,9 @@ export const storeReproRun = mutation({
   },
   handler: async (ctx, args) => {
     await requireRunAccess(ctx, args.runId);
-    return await upsertReproRunDoc(ctx, args);
+    const reproRunId = await upsertReproRunDoc(ctx, args);
+    await syncRunLatestReproRun(ctx, args.runId);
+    return reproRunId;
   },
 });
 
@@ -687,7 +722,9 @@ export const storeReproRunFromAction = internalMutation({
     durationMs: v.int64(),
   },
   handler: async (ctx, args) => {
-    return await upsertReproRunDoc(ctx, args);
+    const reproRunId = await upsertReproRunDoc(ctx, args);
+    await syncRunLatestReproRun(ctx, args.runId);
+    return reproRunId;
   },
 });
 
