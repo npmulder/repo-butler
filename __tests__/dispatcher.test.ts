@@ -548,4 +548,64 @@ describe("dispatcher.handleCallback", () => {
       vi.useRealTimers();
     }
   });
+
+  it("fails malformed signed callback payloads without rethrowing", async () => {
+    const { t, runId, runIdentifier } = await setupRunFixture(
+      "run_dispatch_invalid_payload",
+    );
+
+    const dispatchId = await t.mutation(internal.dispatcher.recordDispatch, {
+      runId,
+      stage: "reproduce",
+      workflowFile: REPRODUCE_WORKFLOW_FILE,
+      owner: "repo-butler",
+      repo: "example",
+      ref: "main",
+      inputs: {
+        targetRepo: "repo-butler/example",
+        targetRef: "main",
+        targetSha: "deadbeef",
+        artifactPath: "tests/repro.spec.ts",
+        artifactContent: "failing repro body",
+        commands: [{ name: "run_test", cmd: "pnpm test" }],
+        callbackUrl: "https://example.convex.site/actions/callback",
+        policyNetwork: "disabled",
+        policyTimeout: 1200,
+        iteration: 1,
+      },
+    });
+
+    await expect(
+      t.mutation(internal.dispatcher.handleCallback, {
+        dispatchId,
+        result: {
+          dispatch_id: dispatchId,
+          run_id: runIdentifier,
+          stage: "reproduce",
+          workflow: REPRODUCE_WORKFLOW_FILE,
+          status: "completed",
+          sandbox_result: {
+            runId: runIdentifier,
+            status: "failure",
+          },
+        },
+      }),
+    ).resolves.toBeNull();
+
+    const result = await t.run(async (ctx) => {
+      return {
+        run: await ctx.db.get(runId),
+        dispatch: await ctx.db.get(dispatchId),
+      };
+    });
+
+    expect(result.dispatch).toMatchObject({
+      status: "failed",
+      errorMessage: "Invalid sandbox_result payload",
+    });
+    expect(result.run).toMatchObject({
+      status: "failed",
+      errorMessage: "Invalid sandbox_result payload",
+    });
+  });
 });

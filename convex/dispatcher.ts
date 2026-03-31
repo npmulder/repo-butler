@@ -57,6 +57,24 @@ type DispatchCallbackResult = {
   error?: string;
 };
 
+const sandboxStatusValues = ["success", "failure", "error", "timeout"] as const;
+const sandboxFailureTypeValues = ["env_setup", "repro_failure"] as const;
+const sandboxNetworkPolicyValues = ["disabled", "enabled"] as const;
+const sandboxKindValues = ["docker"] as const;
+const sandboxEnvironmentStrategyValues = [
+  "devcontainer",
+  "dockerfile",
+  "synth_dockerfile",
+  "bootstrap",
+] as const;
+const failureObservedKindValues = [
+  "exception",
+  "assertion",
+  "nonzero_exit",
+  "snapshot_diff",
+  "timeout",
+] as const;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -65,10 +83,251 @@ function readString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function readOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 function readNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
+}
+
+function readInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value)
+    ? value
+    : undefined;
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+    ? [...value]
+    : undefined;
+}
+
+function readLiteral<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+): T | undefined {
+  return typeof value === "string" && allowed.includes(value as T)
+    ? (value as T)
+    : undefined;
+}
+
+function normalizeFailureObserved(
+  value: unknown,
+): SandboxResult["failureObserved"] {
+  if (!isRecord(value)) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  const kind = readLiteral(value.kind, failureObservedKindValues);
+
+  if (!kind) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  const matchAny = readStringArray(value.matchAny);
+
+  if (value.matchAny !== undefined && !matchAny) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  const traceExcerptSha256 = readOptionalString(value.traceExcerptSha256);
+
+  if (
+    value.traceExcerptSha256 !== undefined &&
+    traceExcerptSha256 === undefined
+  ) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  return {
+    kind,
+    ...(matchAny ? { matchAny } : {}),
+    ...(traceExcerptSha256 !== undefined ? { traceExcerptSha256 } : {}),
+  };
+}
+
+function normalizeEnvironmentStrategy(
+  value: unknown,
+): SandboxResult["environmentStrategy"] {
+  if (!isRecord(value)) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  const preferred = readLiteral(
+    value.preferred,
+    sandboxEnvironmentStrategyValues,
+  );
+  const detected = readLiteral(
+    value.detected,
+    sandboxEnvironmentStrategyValues,
+  );
+
+  if (!preferred || !detected) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  if (
+    !Array.isArray(value.fallbacks) ||
+    value.fallbacks.some(
+      (fallback) =>
+        readLiteral(fallback, sandboxEnvironmentStrategyValues) === undefined,
+    )
+  ) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  const fallbacks = value.fallbacks.map(
+    (fallback) => readLiteral(fallback, sandboxEnvironmentStrategyValues)!,
+  );
+  const notes = readOptionalString(value.notes);
+  const imageUsed = readOptionalString(value.imageUsed);
+  const attempted = readLiteral(
+    value.attempted,
+    sandboxEnvironmentStrategyValues,
+  );
+  const failedAt = readOptionalString(value.failedAt);
+
+  if (value.notes !== undefined && notes === undefined) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  if (value.imageUsed !== undefined && imageUsed === undefined) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  if (value.attempted !== undefined && attempted === undefined) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  if (value.failedAt !== undefined && failedAt === undefined) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  return {
+    preferred,
+    detected,
+    fallbacks,
+    notes: notes ?? "",
+    ...(imageUsed !== undefined ? { imageUsed } : {}),
+    ...(attempted !== undefined ? { attempted } : {}),
+    ...(failedAt !== undefined ? { failedAt } : {}),
+  };
+}
+
+function normalizeStepResult(value: unknown): SandboxResult["steps"][number] {
+  if (!isRecord(value)) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  const name = readString(value.name);
+  const cmd = readString(value.cmd);
+  const exitCode = readInteger(value.exitCode);
+  const stdoutSha256 = readString(value.stdoutSha256);
+  const stderrSha256 = readString(value.stderrSha256);
+  const stdoutTail = readOptionalString(value.stdoutTail);
+  const stderrTail = readOptionalString(value.stderrTail);
+  const durationMs = readInteger(value.durationMs);
+
+  if (
+    !name ||
+    !cmd ||
+    exitCode === undefined ||
+    !stdoutSha256 ||
+    !stderrSha256 ||
+    durationMs === undefined
+  ) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  return {
+    name,
+    cmd,
+    exitCode,
+    stdoutSha256,
+    stderrSha256,
+    durationMs,
+    ...(stdoutTail !== undefined ? { stdoutTail } : {}),
+    ...(stderrTail !== undefined ? { stderrTail } : {}),
+  };
+}
+
+function normalizeSandboxResult(value: unknown): SandboxResult {
+  if (!isRecord(value)) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  const runId = readString(value.runId);
+  const status = readLiteral(value.status, sandboxStatusValues);
+  const failureType = readLiteral(value.failureType, sandboxFailureTypeValues);
+  const totalDurationMs = readInteger(value.totalDurationMs);
+
+  if (!runId || !status || totalDurationMs === undefined) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  if (value.failureType !== undefined && failureType === undefined) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  if (!isRecord(value.sandbox)) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  const sandboxKind = readLiteral(value.sandbox.kind, sandboxKindValues);
+  const sandboxNetwork = readLiteral(
+    value.sandbox.network,
+    sandboxNetworkPolicyValues,
+  );
+  const sandboxUid = readInteger(value.sandbox.uid);
+  const sandboxImageDigest = readString(value.sandbox.imageDigest);
+
+  if (
+    !sandboxKind ||
+    !sandboxNetwork ||
+    sandboxUid === undefined ||
+    !sandboxImageDigest
+  ) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  if (!Array.isArray(value.steps) || value.steps.length === 0) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  const steps = value.steps.map((step) => normalizeStepResult(step));
+  const failureObserved =
+    value.failureObserved !== undefined
+      ? normalizeFailureObserved(value.failureObserved)
+      : undefined;
+  const environmentStrategy =
+    value.environmentStrategy !== undefined
+      ? normalizeEnvironmentStrategy(value.environmentStrategy)
+      : undefined;
+  const logStorageUrl = readOptionalString(value.logStorageUrl);
+
+  if (value.logStorageUrl !== undefined && logStorageUrl === undefined) {
+    throw new Error("Invalid sandbox_result payload");
+  }
+
+  return {
+    runId,
+    status,
+    sandbox: {
+      kind: sandboxKind,
+      imageDigest: sandboxImageDigest,
+      network: sandboxNetwork,
+      uid: sandboxUid,
+    },
+    steps,
+    totalDurationMs,
+    ...(failureType !== undefined ? { failureType } : {}),
+    ...(failureObserved !== undefined ? { failureObserved } : {}),
+    ...(environmentStrategy !== undefined ? { environmentStrategy } : {}),
+    ...(logStorageUrl !== undefined ? { logStorageUrl } : {}),
+  };
 }
 
 function findRelevantReproStep(result: SandboxResult, commandNames: string[]) {
@@ -417,6 +676,18 @@ function normalizeCallbackResult(value: unknown): DispatchCallbackResult {
   const githubRunId = readNumber(value.github_run_id);
   const githubRunAttempt = readNumber(value.github_run_attempt);
   const error = readString(value.error) ?? undefined;
+  const sandboxResult =
+    value.sandbox_result !== undefined
+      ? normalizeSandboxResult(value.sandbox_result)
+      : undefined;
+  const rerunResults =
+    value.rerun_results !== undefined
+      ? Array.isArray(value.rerun_results) && value.rerun_results.length > 0
+        ? value.rerun_results.map((result) => normalizeSandboxResult(result))
+        : (() => {
+            throw new Error("Invalid rerun_results payload");
+          })()
+      : undefined;
 
   return {
     dispatch_id: dispatchId,
@@ -429,12 +700,8 @@ function normalizeCallbackResult(value: unknown): DispatchCallbackResult {
       ? { github_run_attempt: githubRunAttempt }
       : {}),
     ...(iteration !== undefined ? { iteration } : {}),
-    ...(value.sandbox_result
-      ? { sandbox_result: value.sandbox_result as SandboxResult }
-      : {}),
-    ...(Array.isArray(value.rerun_results)
-      ? { rerun_results: value.rerun_results as SandboxResult[] }
-      : {}),
+    ...(sandboxResult ? { sandbox_result: sandboxResult } : {}),
+    ...(rerunResults ? { rerun_results: rerunResults } : {}),
     ...(error ? { error } : {}),
   };
 }
@@ -534,18 +801,38 @@ export const handleCallback = internalMutation({
       throw new Error("Run not found");
     }
 
-    const result = normalizeCallbackResult(args.result);
+    let result: DispatchCallbackResult;
 
-    if (result.dispatch_id !== args.dispatchId) {
-      throw new Error("Dispatch ID mismatch in callback payload");
-    }
+    try {
+      result = normalizeCallbackResult(args.result);
 
-    if (result.run_id !== run.runId) {
-      throw new Error("Run ID mismatch in callback payload");
-    }
+      if (result.dispatch_id !== args.dispatchId) {
+        throw new Error("Dispatch ID mismatch in callback payload");
+      }
 
-    if (result.stage !== dispatch.stage) {
-      throw new Error("Dispatch stage mismatch in callback payload");
+      if (result.run_id !== run.runId) {
+        throw new Error("Run ID mismatch in callback payload");
+      }
+
+      if (result.stage !== dispatch.stage) {
+        throw new Error("Dispatch stage mismatch in callback payload");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Invalid callback payload";
+
+      await ctx.db.patch(args.dispatchId, {
+        status: "failed",
+        result: args.result,
+        errorMessage,
+        completedAt: Date.now(),
+      });
+      await ctx.runMutation(internal.runs.updateStatus, {
+        runId: dispatch.runId,
+        status: "failed",
+        errorMessage,
+      });
+      return;
     }
 
     await ctx.db.patch(args.dispatchId, {
