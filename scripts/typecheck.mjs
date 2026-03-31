@@ -22,7 +22,7 @@ for (const step of [
     env: typegenEnv,
   },
   {
-    args: ["exec", "tsc", "--noEmit", "--project", "tsconfig.json"],
+    args: ["exec", "tsc", "--noEmit", "--project", "tsconfig.next.json"],
     env: process.env,
   },
 ]) {
