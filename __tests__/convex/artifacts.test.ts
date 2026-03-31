@@ -366,6 +366,7 @@ describe("artifact public mutations and queries", () => {
     expect(firstBundle?.plan).not.toBeNull();
     expect(firstBundle?.reproRuns).toHaveLength(1);
     expect(firstBundle?.verification).not.toBeNull();
+    expect(firstBundle?.verification?.repoId).toBe(repoId);
     expect(firstBundle?.run.status).toBe("completed");
     expect(firstBundle?.run.verdict).toBe("reproduced");
 
@@ -419,6 +420,7 @@ describe("artifact public mutations and queries", () => {
       "updated failing artifact",
     );
     expect(updatedBundle?.verification?.verdict).toBe("not_reproduced");
+    expect(updatedBundle?.verification?.repoId).toBe(repoId);
     expect(updatedBundle?.run.status).toBe("failed");
   });
 

@@ -457,6 +457,12 @@ async function upsertVerificationDoc(
     patchRunStatus: boolean;
   } = { patchRunStatus: true },
 ) {
+  const run = await ctx.db.get(args.runId);
+
+  if (!run) {
+    throw new Error("Run not found");
+  }
+
   const existing = await ctx.db
     .query("verifications")
     .withIndex("by_run", (q) => q.eq("runId", args.runId))
@@ -464,6 +470,7 @@ async function upsertVerificationDoc(
   const createdAt = existing?.createdAt ?? Date.now();
   const doc = {
     runId: args.runId,
+    repoId: run.repoId,
     schemaVersion: args.schemaVersion,
     verdict: args.verdict,
     determinism: args.determinism,

@@ -379,6 +379,8 @@ export default defineSchema({
 
   verifications: defineTable({
     runId: v.id("runs"),
+    // Optional during rollout while legacy verification rows are still backfilled.
+    repoId: v.optional(v.id("repos")),
     schemaVersion: v.string(),
     verdict: verdictValidator,
     determinism: v.object({
@@ -402,6 +404,7 @@ export default defineSchema({
     createdAt: v.float64(),
   })
     .index("by_run", ["runId"])
+    .index("by_repo_and_verdict_and_created_at", ["repoId", "verdict", "createdAt"])
     .index("by_log_storage_id", ["logStorageId"]),
 
   reports: defineTable({
