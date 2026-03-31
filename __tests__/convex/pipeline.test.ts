@@ -40,7 +40,10 @@ const sandboxState = vi.hoisted(() => ({
 }));
 
 const githubState = vi.hoisted(() => ({
+  addLabels: vi.fn(),
+  createComment: vi.fn(),
   getBranch: vi.fn(),
+  removeLabel: vi.fn(),
 }));
 
 vi.mock("@anthropic-ai/sdk", () => {
@@ -79,6 +82,11 @@ vi.mock("@/lib/githubApp", () => {
   return {
     getInstallationOctokit: vi.fn(async () => ({
       rest: {
+        issues: {
+          addLabels: githubState.addLabels,
+          createComment: githubState.createComment,
+          removeLabel: githubState.removeLabel,
+        },
         repos: {
           getBranch: githubState.getBranch,
         },
@@ -392,6 +400,14 @@ beforeEach(() => {
   anthropicState.getRequestOptions.mockReturnValue(undefined);
   anthropicState.provider = "anthropic";
   sandboxState.execute.mockReset();
+  githubState.addLabels.mockReset();
+  githubState.addLabels.mockResolvedValue({ data: [] });
+  githubState.createComment.mockReset();
+  githubState.createComment.mockResolvedValue({
+    data: {
+      id: 9001,
+    },
+  });
   githubState.getBranch.mockReset();
   githubState.getBranch.mockResolvedValue({
     data: {
@@ -400,6 +416,8 @@ beforeEach(() => {
       },
     },
   });
+  githubState.removeLabel.mockReset();
+  githubState.removeLabel.mockResolvedValue({ data: {} });
   vi.useRealTimers();
 });
 
@@ -465,7 +483,7 @@ describe("pipeline.runTriage", () => {
     );
   });
 
-  it("completes runs when triage marks them as not repro eligible", async () => {
+  it("moves runs into reporting when triage marks them as not repro eligible", async () => {
     anthropicState.create.mockResolvedValue(
       buildClaudeResponse({ reproEligible: false }),
     );
@@ -476,9 +494,9 @@ describe("pipeline.runTriage", () => {
     const run = await t.run(async (ctx) => await ctx.db.get(runId));
 
     expect(run).toMatchObject({
-      status: "completed",
+      status: "reporting",
     });
-    expect(run?.completedAt).toBeTypeOf("number");
+    expect(run?.completedAt).toBeUndefined();
   });
 
   it("fails the run when Claude returns no tool block", async () => {
@@ -848,9 +866,10 @@ describe("pipeline.runVerify", () => {
       flakeRate: 0,
     });
     expect(result.run).toMatchObject({
-      status: "completed",
+      status: "reporting",
       verdict: "reproduced",
     });
+    expect(result.run?.completedAt).toBeUndefined();
   });
 
   it("uses the stored repro contract instead of regenerating it during verification", async () => {
@@ -958,6 +977,67 @@ describe("pipeline.runVerify", () => {
       status: "failed",
       errorMessage:
         "Verification sandbox does not support contracts with secrets_mount=readonly",
+    });
+  });
+});
+
+describe("pipeline.runReport", () => {
+  it("posts a triage report only once across duplicate invocations", async () => {
+    const { t, runId } = await setupPipelineFixture();
+    await seedTriageResult(t, runId);
+    await t.mutation(internal.runs.updateStatus, {
+      runId,
+      status: "reporting",
+    });
+
+    await t.action(internal.pipeline.runReport, { runId });
+    await t.action(internal.pipeline.runReport, { runId });
+
+    const result = await t.run(async (ctx) => {
+      return {
+        run: await ctx.db.get(runId),
+        reports: await ctx.db
+          .query("reports")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .take(10),
+      };
+    });
+
+    expect(githubState.createComment).toHaveBeenCalledTimes(1);
+    expect(result.run).toMatchObject({
+      status: "completed",
+    });
+    expect(result.reports).toHaveLength(1);
+    expect(result.reports[0]).toMatchObject({
+      commentId: 9001,
+      reportType: "triage",
+      status: "posted",
+    });
+  });
+
+  it("finalizes the run from an existing posted report without reposting", async () => {
+    const { t, runId } = await setupPipelineFixture();
+    await seedTriageResult(t, runId);
+    await t.mutation(internal.reports.recordReport, {
+      runId,
+      commentId: 111,
+      labelsApplied: ["type:bug"],
+      reportType: "triage",
+    });
+    await t.mutation(internal.runs.updateStatus, {
+      runId,
+      status: "reporting",
+    });
+
+    await t.action(internal.pipeline.runReport, { runId });
+
+    const run = await t.run(async (ctx) => {
+      return await ctx.db.get(runId);
+    });
+
+    expect(githubState.createComment).not.toHaveBeenCalled();
+    expect(run).toMatchObject({
+      status: "completed",
     });
   });
 });

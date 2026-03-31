@@ -13,7 +13,9 @@ const runStatusValidator = v.union(
   v.literal("needs_info"),
   v.literal("reproducing"),
   v.literal("verifying"),
+  v.literal("reporting"),
   v.literal("completed"),
+  v.literal("report_failed"),
   v.literal("failed"),
   v.literal("cancelled"),
 );
@@ -180,7 +182,11 @@ export function summarizeDashboardStats(
         stats.completed += 1;
       }
 
-      if (run.status === "failed" || run.status === "cancelled") {
+      if (
+        run.status === "failed" ||
+        run.status === "report_failed" ||
+        run.status === "cancelled"
+      ) {
         stats.failed += 1;
       }
 

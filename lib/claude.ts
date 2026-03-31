@@ -1,5 +1,7 @@
 import Anthropic, { type ClientOptions } from "@anthropic-ai/sdk";
 
+import { getRepoButlerAppUrl } from "./app-url";
+
 export type LlmProvider = "anthropic" | "openrouter";
 type OpenRouterRoute = "fallback" | "cheapest";
 type AnthropicMessageCreateParams = Parameters<Anthropic["messages"]["create"]>[0];
@@ -17,7 +19,6 @@ type OpenRouterProviderPreferences =
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
 const OPENROUTER_APP_TITLE = "Repo Butler";
-const DEFAULT_APP_URL = "http://localhost:3000";
 
 const DIRECT_MODELS = {
   triage: "claude-sonnet-4-20250514",
@@ -73,38 +74,6 @@ export function getLlmProvider(): LlmProvider {
 }
 
 const llmProvider = getLlmProvider();
-
-function normalizeAppUrl(candidate: string | undefined): string | null {
-  if (!candidate) {
-    return null;
-  }
-
-  const trimmed = candidate.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  try {
-    const withProtocol = /^https?:\/\//i.test(trimmed)
-      ? trimmed
-      : `https://${trimmed}`;
-
-    return new URL(withProtocol).origin;
-  } catch {
-    return null;
-  }
-}
-
-function getRepoButlerAppUrl(): string {
-  const appUrl =
-    normalizeAppUrl(process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI) ??
-    normalizeAppUrl(process.env.VERCEL_BRANCH_URL) ??
-    normalizeAppUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL) ??
-    normalizeAppUrl(process.env.VERCEL_URL);
-
-  return appUrl ?? DEFAULT_APP_URL;
-}
 
 function normalizeOpenRouterProvider(provider: string): string | null {
   const normalizedProvider = provider.trim().toLowerCase();

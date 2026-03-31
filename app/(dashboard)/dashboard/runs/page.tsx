@@ -21,7 +21,9 @@ const statusStyles = {
   needs_info: "border-amber-300/20 bg-amber-300/10 text-amber-100",
   reproducing: "border-fuchsia-400/20 bg-fuchsia-400/10 text-fuchsia-100",
   verifying: "border-cyan-300/20 bg-cyan-300/10 text-cyan-100",
+  reporting: "border-indigo-300/20 bg-indigo-300/10 text-indigo-100",
   completed: "border-emerald-400/20 bg-emerald-400/10 text-emerald-100",
+  report_failed: "border-rose-500/20 bg-rose-500/10 text-rose-100",
   failed: "border-rose-400/20 bg-rose-400/10 text-rose-100",
   cancelled: "border-slate-400/20 bg-slate-400/10 text-slate-200",
 } satisfies Record<RunStatus, string>;
@@ -40,10 +42,12 @@ const activeStatuses: readonly RunStatus[] = [
   "approved",
   "reproducing",
   "verifying",
+  "reporting",
 ] as const;
 
 const failedStatuses: readonly RunStatus[] = [
   "failed",
+  "report_failed",
   "cancelled",
   "rejected",
 ] as const;
@@ -123,7 +127,7 @@ export default function RunsPage() {
           </div>
           <p className="font-mono text-3xl font-semibold">{activeRuns}</p>
           <p className="text-sm leading-7 text-muted-foreground">
-            Pending, triaging, approved, awaiting approval, reproducing, or verifying right now.
+            Pending, triaging, approved, awaiting approval, reproducing, verifying, or reporting right now.
           </p>
         </Panel>
 
@@ -138,7 +142,7 @@ export default function RunsPage() {
             {failedRuns}
           </p>
           <p className="text-sm leading-7 text-muted-foreground">
-            Reproduced runs versus failed, rejected, or cancelled runs in the current window.
+            Reproduced runs versus failed, report-failed, rejected, or cancelled runs in the current window.
           </p>
         </Panel>
       </section>

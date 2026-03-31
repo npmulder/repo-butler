@@ -19,7 +19,9 @@ const statusOptions = [
   { label: "Rejected", value: "rejected" },
   { label: "Reproducing", value: "reproducing" },
   { label: "Verifying", value: "verifying" },
+  { label: "Reporting", value: "reporting" },
   { label: "Completed", value: "completed" },
+  { label: "Report failed", value: "report_failed" },
   { label: "Failed", value: "failed" },
   { label: "Cancelled", value: "cancelled" },
 ] as const;

@@ -18,7 +18,9 @@ const runStatusValidator = v.union(
   v.literal("needs_info"),
   v.literal("reproducing"),
   v.literal("verifying"),
+  v.literal("reporting"),
   v.literal("completed"),
+  v.literal("report_failed"),
   v.literal("failed"),
   v.literal("cancelled"),
 );
@@ -114,9 +116,14 @@ export const updateStatus = internalMutation({
     }
 
     if (
-      ["completed", "failed", "cancelled", "rejected", "needs_info"].includes(
-        args.status,
-      )
+      [
+        "completed",
+        "report_failed",
+        "failed",
+        "cancelled",
+        "rejected",
+        "needs_info",
+      ].includes(args.status)
     ) {
       patch.completedAt = Date.now();
     }

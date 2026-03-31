@@ -15,6 +15,8 @@ const runStatusLabels = {
   needs_info: "Needs info",
   pending: "Pending",
   rejected: "Rejected",
+  report_failed: "Report failed",
+  reporting: "Reporting",
   reproducing: "Reproducing",
   triaging: "Triaging",
   verifying: "Verifying",

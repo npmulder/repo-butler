@@ -67,7 +67,7 @@ describe("runs.updateStatus", () => {
     expect(run?.completedAt).toBeTypeOf("number");
   });
 
-  it.each(["completed", "failed", "cancelled"] as const)(
+  it.each(["completed", "report_failed", "failed", "cancelled"] as const)(
     "sets completedAt when moved to %s",
     async (status) => {
       const t = createTestConvex();
