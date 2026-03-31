@@ -22,7 +22,7 @@ jobs:
       - run: pnpm generate:schema-types
       - run: pnpm validate:schemas
       - run: pnpm lint
-      - run: pnpm tsc --noEmit
+      - run: pnpm typecheck
       - run: pnpm test:unit
       - run: pnpm test:convex
       - run: pnpm build

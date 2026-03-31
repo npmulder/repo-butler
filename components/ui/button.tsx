@@ -27,20 +27,20 @@ export function buttonStyles({
   );
 }
 
-type ButtonLinkProps = LinkProps &
+type ButtonLinkProps<RouteType extends string = string> = LinkProps<RouteType> &
   Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> & {
     children: ReactNode;
     variant?: ButtonVariant;
     size?: ButtonSize;
   };
 
-export function ButtonLink({
+export function ButtonLink<RouteType extends string>({
   children,
   className,
   size,
   variant,
   ...props
-}: ButtonLinkProps) {
+}: ButtonLinkProps<RouteType>) {
   return (
     <Link className={buttonStyles({ variant, size, className })} {...props}>
       {children}

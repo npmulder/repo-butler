@@ -135,10 +135,19 @@ OpenRouter's Anthropic-compatible endpoint.
 ```bash
 pnpm run convex:codegen
 pnpm lint
-pnpm tsc --noEmit
+pnpm exec tsc --noEmit
+pnpm typecheck
 pnpm build
 pnpm dev
 ```
+
+`pnpm exec tsc --noEmit` uses the base `tsconfig.json`, which now relies on a
+stable `next-env.base.d.ts` shim so it can pass without generated `.next/types`
+present.
+
+`pnpm typecheck` runs `next typegen` before `tsc --noEmit --project
+tsconfig.next.json`, so generated Next route types are still validated on the
+explicit route-aware typecheck path and in CI.
 
 ## CI and deployment
 

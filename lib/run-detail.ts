@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { formatRunStatus } from "@/lib/formatting";
 
@@ -111,12 +112,14 @@ export function stringifyArtifact(value: unknown) {
   );
 }
 
-export function normalizeBackHref(value: string | null | undefined) {
+export function normalizeBackHref(value: string | null | undefined): Route {
   if (!value) {
     return "/dashboard";
   }
 
-  return value.startsWith("/") && !value.startsWith("//") ? value : "/dashboard";
+  return (value.startsWith("/") && !value.startsWith("//")
+    ? value
+    : "/dashboard") as Route;
 }
 
 export function getLatestFailedStep(reproRun: ReproRunDetail) {
