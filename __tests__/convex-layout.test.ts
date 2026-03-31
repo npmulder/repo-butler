@@ -1,7 +1,10 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 async function listFiles(rootDir: string): Promise<string[]> {
   const entries = await readdir(rootDir, { withFileTypes: true });
@@ -20,7 +23,6 @@ async function listFiles(rootDir: string): Promise<string[]> {
 
 describe("Convex source layout", () => {
   it("keeps test files out of convex/", async () => {
-    const repoRoot = path.resolve(__dirname, "..");
     const convexDir = path.join(repoRoot, "convex");
     const files = await listFiles(convexDir);
 
