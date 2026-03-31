@@ -11,6 +11,11 @@ import {
 import { requireRunAccess } from "./lib/auth";
 import { STATUS_LABELS } from "../lib/labels";
 import {
+  AuditEventType,
+  createAuditEvent,
+  toAuditLogMutationArgs,
+} from "../lib/security/audit-logger";
+import {
   DEFAULT_AUTO_APPROVE_THRESHOLD,
   DEFAULT_MAX_CONCURRENT_RUNS,
   DEFAULT_MAX_DAILY_RUNS,
@@ -338,7 +343,36 @@ async function applyApproval(
 
   await ctx.db.patch(runId, outcome.patch);
 
+  const approvalAuditTypeByAction: Record<ApprovalAction, AuditEventType> = {
+    approve: AuditEventType.APPROVAL_GRANTED,
+    reject: AuditEventType.APPROVAL_DENIED,
+    request_info: AuditEventType.APPROVAL_INFO_REQUESTED,
+  };
+
+  await ctx.runMutation(
+    internal.auditLogs.log,
+    toAuditLogMutationArgs(
+      createAuditEvent(
+        approvalAuditTypeByAction[action],
+        approvedBy,
+        { type: "run", id: runId },
+        { action },
+      ),
+    ),
+  );
+
   if (action === "approve") {
+    await ctx.runMutation(
+      internal.auditLogs.log,
+      toAuditLogMutationArgs(
+        createAuditEvent(
+          AuditEventType.REPRO_DISPATCHED,
+          approvedBy,
+          { type: "run", id: runId },
+          { source: "approval_gate" },
+        ),
+      ),
+    );
     await ctx.scheduler.runAfter(0, internal.pipeline.runReproduce, { runId });
   }
 
@@ -351,25 +385,16 @@ export const processApproval = mutation({
     action: approvalActionValidator,
   },
   handler: async (ctx, args) => {
-    const { run, user } = await requireRunAccess(ctx, args.runId);
+    const { user } = await requireRunAccess(ctx, args.runId);
     const approvedBy = user.name?.trim() || user.email;
-    const outcome = buildApprovalPatch({
+    const outcome = await applyApproval(ctx, {
+      runId: args.runId,
       action: args.action,
-      approvedAt: Date.now(),
       approvedBy,
-      runStatus: run.status,
     });
 
     if (!outcome.success) {
       throw new Error(outcome.error);
-    }
-
-    await ctx.db.patch(run._id, outcome.patch);
-
-    if (args.action === "approve") {
-      await ctx.scheduler.runAfter(0, internal.pipeline.runReproduce, {
-        runId: run._id,
-      });
     }
 
     return {

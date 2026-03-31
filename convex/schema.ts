@@ -418,6 +418,34 @@ export default defineSchema({
     updatedAt: v.float64(),
   }).index("by_run", ["runId"]),
 
+  auditLogs: defineTable({
+    type: v.string(),
+    timestamp: v.number(),
+    actor: v.string(),
+    resourceType: v.string(),
+    resourceId: v.string(),
+    details: v.any(),
+    severity: v.union(
+      v.literal("info"),
+      v.literal("warning"),
+      v.literal("critical"),
+    ),
+    ip: v.optional(v.string()),
+  })
+    .index("by_timestamp", ["timestamp"])
+    .index("by_type_and_timestamp", ["type", "timestamp"])
+    .index("by_severity_and_timestamp", ["severity", "timestamp"])
+    .index("by_resource_type_and_resource_id_and_timestamp", [
+      "resourceType",
+      "resourceId",
+      "timestamp",
+    ]),
+
+  rateLimitEvents: defineTable({
+    key: v.string(),
+    timestamp: v.number(),
+  }).index("by_key_and_timestamp", ["key", "timestamp"]),
+
   webhookDeliveries: defineTable({
     deliveryId: v.string(),
     event: v.string(),
