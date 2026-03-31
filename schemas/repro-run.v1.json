@@ -67,6 +67,12 @@
             "type": "string",
             "pattern": "^[a-f0-9]{64}$"
           },
+          "stdout_tail": {
+            "type": "string"
+          },
+          "stderr_tail": {
+            "type": "string"
+          },
           "duration_ms": {
             "type": "integer",
             "minimum": 0

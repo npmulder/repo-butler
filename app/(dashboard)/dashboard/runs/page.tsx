@@ -2,6 +2,7 @@
 
 import { Activity, CircleCheckBig, Clock3, TriangleAlert } from "lucide-react";
 import { useQuery } from "convex/react";
+import Link from "next/link";
 
 import { Panel } from "@/components/ui/panel";
 import { api } from "@/convex/_generated/api";
@@ -165,8 +166,9 @@ export default function RunsPage() {
           </div>
           <div className="divide-y divide-border/80">
             {runs.map((run) => (
-              <article
+              <Link
                 key={run._id}
+                href={`/runs/${run._id}?back=%2Fdashboard%2Fruns`}
                 className="grid gap-4 px-5 py-4 transition hover:bg-background/40 lg:grid-cols-[minmax(0,1fr)_auto]"
               >
                 <div className="min-w-0">
@@ -199,7 +201,7 @@ export default function RunsPage() {
                     {formatStatus(run.status)}
                   </span>
                 </div>
-              </article>
+              </Link>
             ))}
           </div>
         </Panel>

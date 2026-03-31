@@ -23,6 +23,7 @@ import type * as repos from "../repos.js";
 import type * as reproContracts from "../reproContracts.js";
 import type * as reproPlans from "../reproPlans.js";
 import type * as reproRuns from "../reproRuns.js";
+import type * as runDetail from "../runDetail.js";
 import type * as runs from "../runs.js";
 import type * as triageResults from "../triageResults.js";
 import type * as users from "../users.js";
@@ -51,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   reproContracts: typeof reproContracts;
   reproPlans: typeof reproPlans;
   reproRuns: typeof reproRuns;
+  runDetail: typeof runDetail;
   runs: typeof runs;
   triageResults: typeof triageResults;
   users: typeof users;

@@ -252,6 +252,8 @@ export function buildReproRunArtifact(input: {
       exit_code: step.exitCode,
       ...(step.stdoutSha256 ? { stdout_sha256: step.stdoutSha256 } : {}),
       ...(step.stderrSha256 ? { stderr_sha256: step.stderrSha256 } : {}),
+      ...(step.stdoutTail ? { stdout_tail: step.stdoutTail } : {}),
+      ...(step.stderrTail ? { stderr_tail: step.stderrTail } : {}),
       ...(typeof step.durationMs === "number"
         ? { duration_ms: step.durationMs }
         : {}),
@@ -326,6 +328,8 @@ export function reproRunArtifactToMutationArgs<RunId extends string>(
       exitCode: BigInt(step.exit_code),
       ...(step.stdout_sha256 ? { stdoutSha256: step.stdout_sha256 } : {}),
       ...(step.stderr_sha256 ? { stderrSha256: step.stderr_sha256 } : {}),
+      ...(step.stdout_tail ? { stdoutTail: step.stdout_tail } : {}),
+      ...(step.stderr_tail ? { stderrTail: step.stderr_tail } : {}),
       ...(typeof step.duration_ms === "number"
         ? { durationMs: BigInt(step.duration_ms) }
         : {}),
