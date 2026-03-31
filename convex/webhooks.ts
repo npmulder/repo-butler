@@ -217,18 +217,20 @@ export const cleanupExpiredDeliveries = internalMutation({
       1,
       Math.floor(args.batchSize ?? WEBHOOK_DELIVERY_CLEANUP_BATCH_SIZE),
     );
+    const queryLimit = batchSize + 1;
     const expiredDeliveries = await ctx.db
       .query("webhookDeliveries")
       .withIndex("by_processed_at", (query) =>
         query.lt("processedAt", cutoffTime),
       )
-      .take(batchSize);
+      .take(queryLimit);
+    const deliveriesToDelete = expiredDeliveries.slice(0, batchSize);
 
-    for (const delivery of expiredDeliveries) {
+    for (const delivery of deliveriesToDelete) {
       await ctx.db.delete(delivery._id);
     }
 
-    const hasMore = expiredDeliveries.length === batchSize;
+    const hasMore = expiredDeliveries.length > batchSize;
 
     if (hasMore && args.scheduleContinuation !== false) {
       await ctx.scheduler.runAfter(
@@ -244,7 +246,7 @@ export const cleanupExpiredDeliveries = internalMutation({
 
     return {
       cutoffTime,
-      deletedCount: expiredDeliveries.length,
+      deletedCount: deliveriesToDelete.length,
       hasMore,
     };
   },

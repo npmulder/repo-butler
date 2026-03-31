@@ -349,6 +349,41 @@ describe("webhooks.processWebhook", () => {
     ]);
   });
 
+  it("does not schedule another cleanup batch when the final batch is full", async () => {
+    const t = createTestConvex();
+    const cutoffTime = Date.now() - WEBHOOK_DELIVERY_RETENTION_MS;
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("webhookDeliveries", {
+        deliveryId: "delivery_expired_exact_a",
+        event: "issues",
+        action: "opened",
+        processedAt: cutoffTime - 60_000,
+      });
+      await ctx.db.insert("webhookDeliveries", {
+        deliveryId: "delivery_expired_exact_b",
+        event: "issues",
+        action: "opened",
+        processedAt: cutoffTime - 120_000,
+      });
+    });
+
+    const result = await t.mutation(
+      internal.webhooks.cleanupExpiredDeliveries,
+      {
+        batchSize: 2,
+        cutoffTime,
+        scheduleContinuation: false,
+      },
+    );
+
+    expect(result).toEqual({
+      cutoffTime,
+      deletedCount: 2,
+      hasMore: false,
+    });
+  });
+
   it.each([
     [
       "unknown event type",
