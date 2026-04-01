@@ -9,6 +9,22 @@ import {
   seedRun,
   seedUser,
 } from "@/test-support/convex/testHelpers";
+import { anyApi, type FunctionReference } from "convex/server";
+
+const runReproRunMetadataBackfill =
+  anyApi.migrations.runReproRunMetadataBackfill as FunctionReference<
+    "mutation",
+    "internal",
+    {
+      fn?: string;
+      cursor?: string | null;
+      batchSize?: number;
+      dryRun?: boolean;
+      next?: string[];
+      reset?: boolean;
+    },
+    unknown
+  >;
 
 function buildReproRun(
   overrides: Partial<{
@@ -188,6 +204,96 @@ describe("reproRuns.listByRepo", () => {
       olderRunId,
     ]);
     expect(results.map((reproRun) => Number(reproRun.iteration))).toEqual([2, 1]);
+  });
+
+  it("backfills run repro metadata and marks the repo complete", async () => {
+    const t = createTestConvex();
+    const { userId, asUser } = await seedUser(t);
+    const installationId = await seedInstallation(t, userId);
+    const { repoId } = await seedRepo(t, { userId, installationId });
+    const olderIssueId = await seedIssue(t, repoId, {
+      githubIssueNumber: BigInt(12),
+    });
+    const newerIssueId = await seedIssue(t, repoId, {
+      githubIssueNumber: BigInt(13),
+    });
+    const olderRunId = await seedRun(t, {
+      userId,
+      repoId,
+      issueId: olderIssueId,
+      runId: "backfill_old",
+      startedAt: 12_000,
+    });
+    const newerRunId = await seedRun(t, {
+      userId,
+      repoId,
+      issueId: newerIssueId,
+      runId: "backfill_new",
+      startedAt: 13_000,
+    });
+
+    const olderReproRunId = await t.run(async (ctx) => {
+      return await ctx.db.insert("reproRuns", {
+        runId: olderRunId,
+        schemaVersion: "rb.repro_run.v1",
+        iteration: BigInt(1),
+        sandbox: {
+          kind: "docker",
+          network: "disabled",
+        },
+        steps: [],
+        artifactContent: "older",
+        durationMs: BigInt(1_000),
+        createdAt: 12_500,
+      });
+    });
+    const newerReproRunId = await t.run(async (ctx) => {
+      return await ctx.db.insert("reproRuns", {
+        runId: newerRunId,
+        schemaVersion: "rb.repro_run.v1",
+        iteration: BigInt(1),
+        sandbox: {
+          kind: "docker",
+          network: "disabled",
+        },
+        steps: [],
+        artifactContent: "newer",
+        durationMs: BigInt(1_000),
+        createdAt: 13_500,
+      });
+    });
+
+    const beforeBackfill = await asUser.query(api.reproRuns.listByRepo, {
+      repoId,
+      limit: 10,
+    });
+    expect(beforeBackfill.map((reproRun) => reproRun.runId)).toEqual([
+      newerRunId,
+      olderRunId,
+    ]);
+
+    await t.mutation(runReproRunMetadataBackfill, {
+      fn: "migrations:backfillRunReproMetadata",
+      next: ["migrations:markReposWithReproMetadataBackfill"],
+    });
+
+    const repo = await t.query(internal.repos.getById, { repoId });
+    const olderRun = await t.query(internal.runs.getById, { runId: olderRunId });
+    const newerRun = await t.query(internal.runs.getById, { runId: newerRunId });
+    const afterBackfill = await asUser.query(api.reproRuns.listByRepo, {
+      repoId,
+      limit: 10,
+    });
+
+    expect(repo?.reproRunMetadataBackfilledAt).toBeTypeOf("number");
+    expect(olderRun?.hasReproRun).toBe(true);
+    expect(olderRun?.latestReproRunId).toBe(olderReproRunId);
+    expect(newerRun?.hasReproRun).toBe(true);
+    expect(newerRun?.latestReproRunId).toBe(newerReproRunId);
+    expect(afterBackfill.map((reproRun) => reproRun.runId)).toEqual([
+      newerRunId,
+      olderRunId,
+    ]);
   });
 
   it("falls back when the denormalized latest repro pointer targets another run", async () => {

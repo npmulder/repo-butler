@@ -1,3 +1,4 @@
+import { register as registerMigrationsComponent } from "@convex-dev/migrations/test";
 import { convexTest } from "convex-test";
 
 import { api } from "@/convex/_generated/api";
@@ -7,7 +8,9 @@ import schema from "@/convex/schema";
 import { modules } from "./modules";
 
 export function createTestConvex() {
-  return convexTest(schema, modules);
+  const t = convexTest(schema, modules);
+  registerMigrationsComponent(t);
+  return t;
 }
 
 export type RepoButlerTest = ReturnType<typeof createTestConvex>;

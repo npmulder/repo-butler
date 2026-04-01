@@ -170,6 +170,7 @@ export default defineSchema({
     defaultBranch: v.string(),
     language: v.optional(v.string()),
     isActive: v.boolean(),
+    reproRunMetadataBackfilledAt: v.optional(v.float64()),
     createdAt: v.float64(),
     updatedAt: v.float64(),
   })
