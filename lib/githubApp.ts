@@ -137,7 +137,17 @@ export function validateGitHubInstallState(
 }
 
 export function getGitHubInstallUrlForState(state: string) {
-  const slug = getRequiredEnv("NEXT_PUBLIC_GITHUB_APP_SLUG");
+  // Read the slug directly so Next.js can inline it at build time.
+  // `getRequiredEnv` uses a dynamic property lookup that the compiler
+  // cannot statically replace, which breaks on Cloudflare Workers where
+  // NEXT_PUBLIC_* vars only exist in the build-time bundle.
+  const slug = process.env.NEXT_PUBLIC_GITHUB_APP_SLUG?.trim();
+
+  if (!slug) {
+    throw new Error(
+      "NEXT_PUBLIC_GITHUB_APP_SLUG is required for GitHub App installation URLs.",
+    );
+  }
 
   return `https://github.com/apps/${slug}/installations/new?state=${encodeURIComponent(state)}`;
 }

@@ -67,9 +67,11 @@ export function RepoSelector({
       ? setupMessages[setupState as keyof typeof setupMessages]
       : null;
   const errorCode = searchParams.get("error");
+  const errorDetail = searchParams.get("detail");
   const errorMessage =
     errorCode && Object.prototype.hasOwnProperty.call(errorMessages, errorCode)
-      ? errorMessages[errorCode as keyof typeof errorMessages]
+      ? errorMessages[errorCode as keyof typeof errorMessages] +
+        (errorDetail ? ` (${errorDetail})` : "")
       : null;
   const syncedCount = searchParams.get("synced");
 

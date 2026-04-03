@@ -48,6 +48,12 @@ export const GET = async (request: NextRequest) => {
   } catch (error) {
     console.error("GitHub App installation start failed", error);
 
-    return redirectToRepos(request, { error: "install_unavailable" });
+    const detail =
+      error instanceof Error ? error.message : "Unknown error";
+
+    return redirectToRepos(request, {
+      error: "install_unavailable",
+      detail,
+    });
   }
 };
