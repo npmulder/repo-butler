@@ -100,6 +100,7 @@ export const create = mutation({
       defaultBranch: args.defaultBranch,
       ...(args.language !== undefined ? { language: args.language } : {}),
       isActive: true,
+      reproRunMetadataBackfilledAt: now,
       createdAt: now,
       updatedAt: now,
     });
@@ -143,6 +144,12 @@ export const syncFromGitHub = mutation({
         defaultBranch: repo.defaultBranch,
         ...(repo.language !== undefined ? { language: repo.language } : {}),
         isActive: existing?.isActive ?? true,
+        ...(existing?.reproRunMetadataBackfilledAt !== undefined
+          ? {
+              reproRunMetadataBackfilledAt:
+                existing.reproRunMetadataBackfilledAt,
+            }
+          : {}),
         updatedAt: now,
       };
 
@@ -157,6 +164,7 @@ export const syncFromGitHub = mutation({
 
       const repoId = await ctx.db.insert("repos", {
         ...nextRepo,
+        reproRunMetadataBackfilledAt: now,
         createdAt: now,
       });
       await insertDefaultRepoSettings(ctx, repoId);

@@ -119,7 +119,7 @@ export const listByRepo = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireRepoAccess(ctx, args.repoId);
+    const { repo } = await requireRepoAccess(ctx, args.repoId);
 
     const limit = normalizeLimit(args.limit);
     const indexedRuns = await ctx.db
@@ -152,6 +152,10 @@ export const listByRepo = query({
     );
 
     if (indexedEntries.length >= limit) {
+      return indexedEntries.map((entry) => entry.reproRun);
+    }
+
+    if (repo.reproRunMetadataBackfilledAt !== undefined) {
       return indexedEntries.map((entry) => entry.reproRun);
     }
 
